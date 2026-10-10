@@ -1,0 +1,767 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>TakimLock Harita</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🗺️</text></svg>">
+<style>
+  :root {
+    --bg: #1b2218;
+    --panel: #12161ccc;
+    --panel-solid: #12161c;
+    --line: #2a313b;
+    --text: #e8ecf1;
+    --muted: #8b95a3;
+    --accent: #ffcc33;
+    --ok: #4cd964;
+    --bad: #ff5a52;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; overflow: hidden; background: var(--bg); color: var(--text);
+    font: 14px/1.4 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  #app { position: fixed; inset: 0; display: flex; }
+  #mapWrap { position: relative; flex: 1; min-width: 0; }
+  canvas { display: block; width: 100%; height: 100%; cursor: grab; touch-action: none; }
+  canvas.dragging { cursor: grabbing; }
+
+  /* üst bar */
+  #topbar { position: absolute; top: 10px; left: 10px; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  .chip { background: var(--panel); backdrop-filter: blur(6px); border: 1px solid var(--line); border-radius: 10px;
+    padding: 6px 10px; display: flex; align-items: center; gap: 8px; }
+  #title { font-weight: 700; letter-spacing: .2px; }
+  #status { width: 9px; height: 9px; border-radius: 50%; background: var(--muted); display: inline-block; }
+  #status.ok { background: var(--ok); box-shadow: 0 0 6px var(--ok); }
+  #status.bad { background: var(--bad); box-shadow: 0 0 6px var(--bad); }
+  select, input[type=text] { background: #0c0f13; color: var(--text); border: 1px solid var(--line); border-radius: 8px;
+    padding: 5px 8px; font: inherit; outline: none; }
+  select:focus, input[type=text]:focus { border-color: var(--accent); }
+  button { background: #0c0f13; color: var(--text); border: 1px solid var(--line); border-radius: 8px;
+    padding: 5px 10px; font: inherit; cursor: pointer; }
+  button:hover { border-color: var(--accent); }
+
+  /* zoom butonları */
+  #zoom { position: absolute; right: 12px; bottom: 44px; display: flex; flex-direction: column; gap: 6px; }
+  #zoom button { width: 38px; height: 38px; font-size: 20px; padding: 0; background: var(--panel); backdrop-filter: blur(6px); }
+
+  #statusbar { position: absolute; left: 0; right: 0; bottom: 0; padding: 4px 12px; font-size: 12px; color: var(--muted);
+    background: linear-gradient(transparent, #000a); display: flex; gap: 16px; pointer-events: none; }
+  #statusbar b { color: var(--text); font-weight: 600; }
+  #banner { position: absolute; top: 56px; z-index: 5; left: 50%; transform: translateX(-50%); background: var(--bad); color: #fff;
+    padding: 6px 14px; border-radius: 999px; font-weight: 600; display: none; }
+
+  /* sağ panel */
+  #side { width: 300px; background: var(--panel-solid); border-left: 1px solid var(--line); display: flex; flex-direction: column; }
+  #tabs { display: flex; border-bottom: 1px solid var(--line); }
+  .tab { flex: 1; text-align: center; padding: 11px 6px; cursor: pointer; color: var(--muted); font-weight: 600;
+    border-bottom: 2px solid transparent; user-select: none; }
+  .tab.active { color: var(--text); border-bottom-color: var(--accent); }
+  .tab .n { background: #232a33; border-radius: 999px; padding: 1px 7px; margin-left: 4px; font-size: 12px; color: var(--text); }
+  #searchBox { padding: 8px 10px; border-bottom: 1px solid var(--line); }
+  #searchBox input { width: 100%; }
+  #list { flex: 1; overflow-y: auto; }
+  .row { display: flex; gap: 10px; align-items: center; padding: 9px 12px; border-bottom: 1px solid #1b2129; cursor: pointer; }
+  .row:hover { background: #1a2028; }
+  .row.sel { background: #232b36; box-shadow: inset 3px 0 0 var(--accent); }
+  .dot { width: 12px; height: 12px; border-radius: 50%; flex: none; border: 2px solid #fff6; }
+  .info { min-width: 0; flex: 1; }
+  .nm { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .sub { color: var(--muted); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .empty { padding: 24px; text-align: center; color: var(--muted); }
+  #followRow { padding: 8px 12px; border-top: 1px solid var(--line); display: flex; align-items: center; gap: 8px; color: var(--muted); }
+  #sideToggle { display: none; }
+  .tgl { cursor: pointer; user-select: none; padding: 5px 10px; }
+  .tgl input { margin: 0; accent-color: var(--accent); }
+
+  @media (max-width: 700px) {
+    #app { flex-direction: column; }
+    #side { width: 100%; height: 38vh; border-left: 0; border-top: 1px solid var(--line); }
+    #zoom { bottom: 36px; }
+  }
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="mapWrap">
+    <canvas id="cv"></canvas>
+    <div id="topbar">
+      <div class="chip"><span id="status"></span><span id="title">TakimLock Harita</span></div>
+      <div class="chip"><span style="color:var(--muted)">Dünya</span><select id="worldSel"></select></div>
+      <button id="fitBtn" title="Tüm kasabaları sığdır">⤢ Sığdır</button>
+      <label class="chip tgl"><input type="checkbox" id="showBlocks" checked> Bloklar</label>
+      <label class="chip tgl"><input type="checkbox" id="showFill" checked> Kasaba rengi</label>
+    </div>
+    <div id="banner">Bağlanılıyor…</div>
+    <div id="zoom">
+      <button id="zin" title="Yakınlaştır">+</button>
+      <button id="zout" title="Uzaklaştır">−</button>
+    </div>
+    <div id="statusbar">
+      <span>İmleç: <b id="sbCursor">-</b></span>
+      <span>Chunk: <b id="sbChunk">-</b></span>
+      <span>Kasaba: <b id="sbTown">-</b></span>
+      <span>Blok: <b id="sbBlock">-</b></span>
+      <span style="margin-left:auto">Zoom: <b id="sbZoom">-</b></span>
+    </div>
+  </div>
+
+  <aside id="side">
+    <div id="tabs">
+      <div class="tab active" data-tab="players">Oyuncular<span class="n" id="nPlayers">0</span></div>
+      <div class="tab" data-tab="towns">Kasabalar<span class="n" id="nTowns">0</span></div>
+    </div>
+    <div id="searchBox"><input type="text" id="search" placeholder="Ara…"></div>
+    <div id="list"></div>
+    <div id="followRow"><input type="checkbox" id="follow"><label for="follow">Seçili oyuncuyu takip et</label></div>
+  </aside>
+</div>
+
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+import { getDatabase, ref, onValue, onChildAdded, onChildChanged, onChildRemoved }
+  from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
+
+// ================================================================ AYARLAR
+// Plugin config.yml > firebase.url ve firebase.root ile AYNI olmalı.
+const FIREBASE_URL = "https://ozeltag-default-rtdb.firebaseio.com";
+const ROOT = "takimlock";
+// ================================================================
+
+(() => {
+  'use strict';
+
+  // ---------------------------------------------------------------- ayarlar
+  const STALE_MS = 25000;         // bu süredir veri gelmediyse sunucu çevrimdışı say
+  const B64 = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_';
+  const MIN_SCALE = 0.05, MAX_SCALE = 24;   // piksel / blok
+
+  // ---------------------------------------------------------------- durum
+  const cv = document.getElementById('cv');
+  const ctx = cv.getContext('2d');
+  let W = 0, H = 0, DPR = 1;
+
+  const view = { x: 0, z: 0, scale: 1.5 };   // x,z = ekran merkezinin dünya (blok) koordinatı
+  let world = null;                          // seçili dünya
+  let claimsData = { towns: [] };
+  let players = [];
+  let render = {};                           // dünya -> { towns: [...] , labels: [...], spawns: [...] }
+  let selectedUuid = null;
+  let activeTab = 'players';
+  let firstFit = true;
+  let dirty = true;
+  let anim = null;
+  let hoverBlock = null;
+  const blockCache = {};                     // dünya -> Map('cx_cz' -> {cx,cz,canvas,pal,idx})
+  const subscribed = new Set();
+
+  const $ = id => document.getElementById(id);
+
+  // ---------------------------------------------------------------- yardımcılar
+  function hashHue(str) {
+    let h = 2166136261;
+    for (let i = 0; i < str.length; i++) { h ^= str.charCodeAt(i); h = Math.imul(h, 16777619); }
+    return Math.abs(h) % 360;
+  }
+  const townColor = (name, a = 1, l = 52) => `hsla(${hashHue(name.toLowerCase())}, 78%, ${l}%, ${a})`;
+  const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+  const w2sx = x => (x - view.x) * view.scale + W / 2;
+  const w2sy = z => (z - view.z) * view.scale + H / 2;
+  const s2wx = x => (x - W / 2) / view.scale + view.x;
+  const s2wz = y => (y - H / 2) / view.scale + view.z;
+  const markDirty = () => { dirty = true; };
+
+  function resize() {
+    DPR = window.devicePixelRatio || 1;
+    const r = cv.getBoundingClientRect();
+    W = r.width; H = r.height;
+    cv.width = Math.round(W * DPR);
+    cv.height = Math.round(H * DPR);
+    markDirty();
+  }
+  window.addEventListener('resize', resize);
+
+  // ---------------------------------------------------------------- claim verisini işle
+  // Her kasaba için: chunk kümesi, dış kenar segmentleri, bağlantılı bölgeler (etiket için), spawn.
+  function buildRender(towns) {
+    const out = {};
+    const get = w => out[w] || (out[w] = { towns: [], labels: [], spawns: [] });
+
+    for (const t of towns) {
+      for (const [w, list] of Object.entries(t.chunks || {})) {
+        const set = new Set(list.map(c => c[0] + ',' + c[1]));
+        const edges = [];   // [x1,z1,x2,z2] chunk koordinatında
+        for (const [cx, cz] of list) {
+          if (!set.has((cx - 1) + ',' + cz)) edges.push([cx, cz, cx, cz + 1]);
+          if (!set.has((cx + 1) + ',' + cz)) edges.push([cx + 1, cz, cx + 1, cz + 1]);
+          if (!set.has(cx + ',' + (cz - 1))) edges.push([cx, cz, cx + 1, cz]);
+          if (!set.has(cx + ',' + (cz + 1))) edges.push([cx, cz + 1, cx + 1, cz + 1]);
+        }
+        const r = get(w);
+        r.towns.push({ name: t.name, chunks: list, edges });
+
+        // bağlantılı bileşenler (4 komşuluk) -> her biri için bir etiket
+        const seen = new Set();
+        for (const [sx, sz] of list) {
+          const k0 = sx + ',' + sz;
+          if (seen.has(k0)) continue;
+          const comp = [];
+          const stack = [[sx, sz]];
+          seen.add(k0);
+          while (stack.length) {
+            const [x, z] = stack.pop();
+            comp.push([x, z]);
+            for (const [dx, dz] of [[1,0],[-1,0],[0,1],[0,-1]]) {
+              const nx = x + dx, nz = z + dz, k = nx + ',' + nz;
+              if (set.has(k) && !seen.has(k)) { seen.add(k); stack.push([nx, nz]); }
+            }
+          }
+          let sxm = 0, szm = 0, minX = 1e9, maxX = -1e9, minZ = 1e9, maxZ = -1e9;
+          for (const [x, z] of comp) {
+            sxm += x; szm += z;
+            if (x < minX) minX = x; if (x > maxX) maxX = x;
+            if (z < minZ) minZ = z; if (z > maxZ) maxZ = z;
+          }
+          const mx = sxm / comp.length, mz = szm / comp.length;
+          // merkeze en yakın gerçek chunk (L şeklinde bölgelerde etiket dışarı taşmasın)
+          let best = comp[0], bd = Infinity;
+          for (const c of comp) {
+            const d = (c[0] - mx) ** 2 + (c[1] - mz) ** 2;
+            if (d < bd) { bd = d; best = c; }
+          }
+          r.labels.push({
+            name: t.name,
+            x: (best[0] + 0.5) * 16, z: (best[1] + 0.5) * 16,
+            wBlocks: (maxX - minX + 1) * 16, count: comp.length
+          });
+        }
+      }
+      if (t.spawn) get(t.spawn.world).spawns.push({ name: t.name, x: t.spawn.x, y: t.spawn.y, z: t.spawn.z });
+    }
+    return out;
+  }
+
+  // ---------------------------------------------------------------- dünya seçici
+  function knownWorlds() {
+    const s = new Set(Object.keys(render));
+    for (const p of players) s.add(p.world);
+    if (world) s.add(world);
+    return [...s].sort();
+  }
+  function refreshWorldSelect() {
+    const sel = $('worldSel');
+    const ws = knownWorlds();
+    if (!world && ws.length) {
+      world = ws.includes('world') ? 'world' : ws[0];
+    }
+    const cur = [...sel.options].map(o => o.value).join('|');
+    if (cur !== ws.join('|')) {
+      sel.innerHTML = '';
+      for (const w of ws) { const o = document.createElement('option'); o.value = o.textContent = w; sel.appendChild(o); }
+    }
+    if (world) sel.value = world;
+  }
+  $('worldSel').addEventListener('change', e => { world = e.target.value; fitToClaims(); renderList(); markDirty(); });
+
+  // ---------------------------------------------------------------- kamera
+  function animateTo(x, z, scale, ms = 550) {
+    anim = { fx: view.x, fz: view.z, fs: view.scale, tx: x, tz: z, ts: scale ?? view.scale, t0: performance.now(), ms };
+    markDirty();
+  }
+  function stepAnim(now) {
+    if (!anim) return;
+    let t = clamp((now - anim.t0) / anim.ms, 0, 1);
+    const e = 1 - Math.pow(1 - t, 3);   // easeOutCubic
+    view.x = anim.fx + (anim.tx - anim.fx) * e;
+    view.z = anim.fz + (anim.tz - anim.fz) * e;
+    // ölçeği logaritmik interpolasyon
+    view.scale = Math.exp(Math.log(anim.fs) + (Math.log(anim.ts) - Math.log(anim.fs)) * e);
+    if (t >= 1) anim = null;
+    markDirty();
+  }
+  function zoomAt(sx, sy, factor) {
+    const wx = s2wx(sx), wz = s2wz(sy);
+    view.scale = clamp(view.scale * factor, MIN_SCALE, MAX_SCALE);
+    view.x = wx - (sx - W / 2) / view.scale;
+    view.z = wz - (sy - H / 2) / view.scale;
+    anim = null;
+    markDirty();
+  }
+  function fitToClaims() {
+    const r = render[world];
+    let minX = 1e9, maxX = -1e9, minZ = 1e9, maxZ = -1e9, any = false;
+    if (r) for (const t of r.towns) for (const [cx, cz] of t.chunks) {
+      any = true;
+      minX = Math.min(minX, cx * 16); maxX = Math.max(maxX, cx * 16 + 16);
+      minZ = Math.min(minZ, cz * 16); maxZ = Math.max(maxZ, cz * 16 + 16);
+    }
+    if (!any) { animateTo(0, 0, 1.5, 300); return; }
+    const pad = 80;
+    const sc = clamp(Math.min((W - pad * 2) / (maxX - minX), (H - pad * 2) / (maxZ - minZ)), MIN_SCALE, 6);
+    animateTo((minX + maxX) / 2, (minZ + maxZ) / 2, sc, 500);
+  }
+  $('fitBtn').onclick = fitToClaims;
+  $('zin').onclick = () => zoomAt(W / 2, H / 2, 1.5);
+  $('zout').onclick = () => zoomAt(W / 2, H / 2, 1 / 1.5);
+
+  // ---------------------------------------------------------------- etkileşim (sürükleme / zoom / pinch)
+  const pointers = new Map();
+  let pinchDist = 0;
+  cv.addEventListener('pointerdown', e => {
+    cv.setPointerCapture(e.pointerId);
+    pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (pointers.size === 2) {
+      const [a, b] = [...pointers.values()];
+      pinchDist = Math.hypot(a.x - b.x, a.y - b.y);
+    }
+    cv.classList.add('dragging');
+    anim = null;
+  });
+  cv.addEventListener('pointermove', e => {
+    const rect = cv.getBoundingClientRect();
+    const sx = e.clientX - rect.left, sy = e.clientY - rect.top;
+    hoverBlock = { x: s2wx(sx), z: s2wz(sy) };
+    updateStatusBar();
+
+    const p = pointers.get(e.pointerId);
+    if (p) {
+      if (pointers.size === 1) {
+        view.x -= (e.clientX - p.x) / view.scale;
+        view.z -= (e.clientY - p.y) / view.scale;
+        $('follow').checked = false;      // elle sürükleyince takibi bırak
+      }
+      p.x = e.clientX; p.y = e.clientY;
+      if (pointers.size === 2) {
+        const [a, b] = [...pointers.values()];
+        const d = Math.hypot(a.x - b.x, a.y - b.y);
+        if (pinchDist > 0) zoomAt((a.x + b.x) / 2 - rect.left, (a.y + b.y) / 2 - rect.top, d / pinchDist);
+        pinchDist = d;
+      }
+    }
+    markDirty();
+  });
+  const endPtr = e => { pointers.delete(e.pointerId); pinchDist = 0; if (!pointers.size) cv.classList.remove('dragging'); };
+  cv.addEventListener('pointerup', endPtr);
+  cv.addEventListener('pointercancel', endPtr);
+  cv.addEventListener('pointerleave', () => { hoverBlock = null; updateStatusBar(); });
+  cv.addEventListener('wheel', e => {
+    e.preventDefault();
+    const rect = cv.getBoundingClientRect();
+    zoomAt(e.clientX - rect.left, e.clientY - rect.top, Math.exp(-e.deltaY * 0.0016));
+  }, { passive: false });
+  cv.addEventListener('dblclick', e => {
+    const rect = cv.getBoundingClientRect();
+    zoomAt(e.clientX - rect.left, e.clientY - rect.top, 2);
+  });
+
+  function prettyName(n) {
+    return n.toLowerCase().split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+  }
+  function blockNameAt(bx, bz) {
+    const c = blockCache[world]?.get((bx >> 4) + '_' + (bz >> 4));
+    if (!c) return '-';
+    const name = c.pal[c.idx[(bz & 15) * 16 + (bx & 15)]];
+    return name ? prettyName(name) : '-';
+  }
+
+  function townAt(bx, bz) {
+    const r = render[world]; if (!r) return null;
+    const cx = Math.floor(bx / 16), cz = Math.floor(bz / 16);
+    for (const t of r.towns) for (const c of t.chunks) if (c[0] === cx && c[1] === cz) return t.name;
+    return null;
+  }
+  function updateStatusBar() {
+    if (hoverBlock) {
+      const bx = Math.floor(hoverBlock.x), bz = Math.floor(hoverBlock.z);
+      $('sbCursor').textContent = `X ${bx}  Z ${bz}`;
+      $('sbChunk').textContent = `${bx >> 4}, ${bz >> 4}`;
+      $('sbTown').textContent = townAt(bx, bz) || '-';
+      $('sbBlock').textContent = blockNameAt(bx, bz);
+    } else {
+      $('sbCursor').textContent = $('sbChunk').textContent = $('sbTown').textContent = $('sbBlock').textContent = '-';
+    }
+    $('sbZoom').textContent = view.scale.toFixed(2) + ' px/blok';
+  }
+
+  // ---------------------------------------------------------------- çizim
+  function drawGrid() {
+    // chunk ızgarası: yeterince yakınsa her 16 blok, değilse 2^k * 16
+    let step = 16;
+    while (step * view.scale < 14) step *= 2;
+    const x0 = s2wx(0), x1 = s2wx(W), z0 = s2wz(0), z1 = s2wz(H);
+
+    ctx.lineWidth = 1;
+    ctx.strokeStyle = 'rgba(255,255,255,0.055)';
+    ctx.beginPath();
+    for (let x = Math.floor(x0 / step) * step; x <= x1; x += step) {
+      const sx = Math.round(w2sx(x)) + 0.5; ctx.moveTo(sx, 0); ctx.lineTo(sx, H);
+    }
+    for (let z = Math.floor(z0 / step) * step; z <= z1; z += step) {
+      const sy = Math.round(w2sy(z)) + 0.5; ctx.moveTo(0, sy); ctx.lineTo(W, sy);
+    }
+    ctx.stroke();
+
+    // bölge (512) çizgileri
+    if (512 * view.scale >= 40) {
+      ctx.strokeStyle = 'rgba(255,255,255,0.12)';
+      ctx.beginPath();
+      for (let x = Math.floor(x0 / 512) * 512; x <= x1; x += 512) {
+        const sx = Math.round(w2sx(x)) + 0.5; ctx.moveTo(sx, 0); ctx.lineTo(sx, H);
+      }
+      for (let z = Math.floor(z0 / 512) * 512; z <= z1; z += 512) {
+        const sy = Math.round(w2sy(z)) + 0.5; ctx.moveTo(0, sy); ctx.lineTo(W, sy);
+      }
+      ctx.stroke();
+    }
+
+    // eksenler (X=0, Z=0)
+    ctx.strokeStyle = 'rgba(255,255,255,0.28)';
+    ctx.beginPath();
+    const ox = Math.round(w2sx(0)) + 0.5, oz = Math.round(w2sy(0)) + 0.5;
+    if (ox >= 0 && ox <= W) { ctx.moveTo(ox, 0); ctx.lineTo(ox, H); }
+    if (oz >= 0 && oz <= H) { ctx.moveTo(0, oz); ctx.lineTo(W, oz); }
+    ctx.stroke();
+
+    // koordinat etiketleri (kenarlarda)
+    let lstep = step;
+    while (lstep * view.scale < 90) lstep *= 2;
+    ctx.fillStyle = 'rgba(255,255,255,0.35)';
+    ctx.font = '11px system-ui, sans-serif';
+    ctx.textAlign = 'center'; ctx.textBaseline = 'top';
+    for (let x = Math.floor(x0 / lstep) * lstep; x <= x1; x += lstep) ctx.fillText(x, w2sx(x), 52);
+    ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
+    for (let z = Math.floor(z0 / lstep) * lstep; z <= z1; z += lstep) ctx.fillText(z, 6, w2sy(z));
+  }
+
+  function drawBlocks() {
+    if (!$('showBlocks').checked) return;
+    const m = blockCache[world]; if (!m) return;
+    const s16 = 16 * view.scale;
+    ctx.imageSmoothingEnabled = view.scale < 1;
+    for (const c of m.values()) {
+      const sx = w2sx(c.cx * 16), sy = w2sy(c.cz * 16);
+      if (sx > W || sy > H || sx + s16 < 0 || sy + s16 < 0) continue;
+      ctx.drawImage(c.canvas, sx, sy, s16 + 0.6, s16 + 0.6);
+    }
+  }
+
+  function drawClaims() {
+    const r = render[world]; if (!r) return;
+    const s16 = 16 * view.scale;
+
+    // dolgu
+    for (const t of r.towns) {
+      if (!$('showFill').checked) continue;
+      ctx.fillStyle = townColor(t.name, $('showBlocks').checked && blockCache[world] ? 0.2 : 0.38);
+      for (const [cx, cz] of t.chunks) {
+        const sx = w2sx(cx * 16), sy = w2sy(cz * 16);
+        if (sx > W || sy > H || sx + s16 < 0 || sy + s16 < 0) continue;
+        ctx.fillRect(sx, sy, s16 + 0.6, s16 + 0.6);
+      }
+    }
+    // dış kenarlar
+    ctx.lineCap = 'square';
+    for (const t of r.towns) {
+      ctx.strokeStyle = townColor(t.name, 1, 58);
+      ctx.lineWidth = clamp(view.scale * 1.2, 1.5, 3.5);
+      ctx.beginPath();
+      for (const [ax, az, bx, bz] of t.edges) {
+        const x1 = w2sx(ax * 16), y1 = w2sy(az * 16), x2 = w2sx(bx * 16), y2 = w2sy(bz * 16);
+        if (Math.max(x1, x2) < 0 || Math.min(x1, x2) > W || Math.max(y1, y2) < 0 || Math.min(y1, y2) > H) continue;
+        ctx.moveTo(x1, y1); ctx.lineTo(x2, y2);
+      }
+      ctx.stroke();
+    }
+    // kasaba isimleri
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    for (const l of r.labels) {
+      const sx = w2sx(l.x), sy = w2sy(l.z);
+      if (sx < -200 || sx > W + 200 || sy < -50 || sy > H + 50) continue;
+      const wPx = l.wBlocks * view.scale;
+      let fs = clamp(wPx / (l.name.length * 0.62), 0, 22);
+      if (wPx < 24) continue;                      // çok uzaksa isim yazma
+      fs = Math.max(fs, 10);
+      ctx.font = `700 ${fs}px system-ui, sans-serif`;
+      ctx.lineWidth = 4; ctx.strokeStyle = 'rgba(0,0,0,0.75)'; ctx.lineJoin = 'round';
+      ctx.strokeText(l.name, sx, sy);
+      ctx.fillStyle = '#fff';
+      ctx.fillText(l.name, sx, sy);
+    }
+  }
+
+  function starPath(cx, cy, R, r) {
+    ctx.beginPath();
+    for (let i = 0; i < 10; i++) {
+      const a = -Math.PI / 2 + i * Math.PI / 5, rad = i % 2 ? r : R;
+      ctx.lineTo(cx + Math.cos(a) * rad, cy + Math.sin(a) * rad);
+    }
+    ctx.closePath();
+  }
+
+  function drawSpawns() {
+    const r = render[world]; if (!r) return;
+    for (const sp of r.spawns) {
+      const sx = w2sx(sp.x), sy = w2sy(sp.z);
+      if (sx < -80 || sx > W + 80 || sy < -40 || sy > H + 40) continue;
+      const R = clamp(7 + view.scale * 2, 8, 15);
+      ctx.save();
+      ctx.shadowColor = 'rgba(0,0,0,0.6)'; ctx.shadowBlur = 6;
+      starPath(sx, sy, R, R * 0.45);
+      ctx.fillStyle = '#ffd23f'; ctx.fill();
+      ctx.shadowBlur = 0;
+      ctx.lineWidth = 1.6; ctx.strokeStyle = '#6b4a00'; ctx.stroke();
+      ctx.restore();
+      // yazı: "Spawn · KasabaAdı"
+      ctx.font = '600 11px system-ui, sans-serif';
+      ctx.textAlign = 'center'; ctx.textBaseline = 'top';
+      const txt = 'Spawn · ' + sp.name;
+      const tw = ctx.measureText(txt).width;
+      ctx.fillStyle = 'rgba(0,0,0,0.7)';
+      ctx.fillRect(sx - tw / 2 - 5, sy + R + 3, tw + 10, 16);
+      ctx.fillStyle = '#ffe28a';
+      ctx.fillText(txt, sx, sy + R + 5);
+    }
+  }
+
+  function drawPlayers(now) {
+    for (const p of players) {
+      if (p.world !== world) continue;
+      const sx = w2sx(p.x), sy = w2sy(p.z);
+      if (sx < -80 || sx > W + 80 || sy < -40 || sy > H + 40) continue;
+      const col = p.team ? townColor(p.team, 1, 60) : '#ffffff';
+      const sel = p.uuid === selectedUuid;
+
+      if (sel) {
+        const pulse = (Math.sin(now / 250) + 1) / 2;
+        ctx.beginPath(); ctx.arc(sx, sy, 11 + pulse * 6, 0, Math.PI * 2);
+        ctx.strokeStyle = `rgba(255,204,51,${0.9 - pulse * 0.5})`; ctx.lineWidth = 2; ctx.stroke();
+      }
+      // bakış yönü (Minecraft: yaw 0 = +Z/güney, 90 = -X/batı)
+      const yaw = p.yaw * Math.PI / 180;
+      const dx = -Math.sin(yaw), dz = Math.cos(yaw);
+      const ax = sx + dx * 14, ay = sy + dz * 14;
+      ctx.beginPath();
+      ctx.moveTo(ax, ay);
+      ctx.lineTo(sx + dx * 6 - dz * 4, sy + dz * 6 + dx * 4);
+      ctx.lineTo(sx + dx * 6 + dz * 4, sy + dz * 6 - dx * 4);
+      ctx.closePath(); ctx.fillStyle = col; ctx.fill();
+
+      ctx.beginPath(); ctx.arc(sx, sy, 6, 0, Math.PI * 2);
+      ctx.fillStyle = col; ctx.fill();
+      ctx.lineWidth = 2; ctx.strokeStyle = sel ? '#ffcc33' : '#000'; ctx.stroke();
+
+      ctx.font = '600 12px system-ui, sans-serif';
+      ctx.textAlign = 'center'; ctx.textBaseline = 'bottom';
+      const tw = ctx.measureText(p.name).width;
+      ctx.fillStyle = 'rgba(0,0,0,0.72)';
+      ctx.fillRect(sx - tw / 2 - 4, sy - 28, tw + 8, 17);
+      ctx.fillStyle = '#fff';
+      ctx.fillText(p.name, sx, sy - 13);
+    }
+  }
+
+  function frame(now) {
+    stepAnim(now);
+    // takip modu
+    const f = $('follow').checked;
+    if (f && selectedUuid && !anim) {
+      const p = players.find(q => q.uuid === selectedUuid && q.world === world);
+      if (p) { view.x += (p.x - view.x) * 0.15; view.z += (p.z - view.z) * 0.15; dirty = true; }
+    }
+    const needsPulse = !!selectedUuid;   // seçili oyuncu halkası animasyonlu
+    if (dirty || needsPulse) {
+      dirty = false;
+      ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+      ctx.imageSmoothingEnabled = true;
+      ctx.fillStyle = '#1b2218';
+      ctx.fillRect(0, 0, W, H);
+      drawBlocks();
+      drawGrid();
+      drawClaims();
+      drawSpawns();
+      drawPlayers(now);
+      updateStatusBar();
+    }
+    requestAnimationFrame(frame);
+  }
+
+  // ---------------------------------------------------------------- sağ panel
+  document.querySelectorAll('.tab').forEach(t => t.onclick = () => {
+    activeTab = t.dataset.tab;
+    document.querySelectorAll('.tab').forEach(x => x.classList.toggle('active', x === t));
+    $('followRow').style.display = activeTab === 'players' ? 'flex' : 'none';
+    renderList();
+  });
+  $('search').addEventListener('input', renderList);
+  $('showBlocks').onchange = $('showFill').onchange = markDirty;
+
+  function focusPlayer(p) {
+    selectedUuid = p.uuid;
+    if (p.world !== world) { world = p.world; $('worldSel').value = world; }
+    animateTo(p.x, p.z, Math.max(view.scale, 2.5));
+    renderList();
+  }
+  function focusTown(name) {
+    const r = render[world];
+    let lbl = null;
+    // seçili dünyada yoksa, kasabanın bulunduğu dünyaya geç
+    if (!r || !r.labels.some(l => l.name === name)) {
+      for (const w of Object.keys(render)) if (render[w].labels.some(l => l.name === name)) { world = w; $('worldSel').value = w; break; }
+    }
+    const best = (render[world]?.labels || []).filter(l => l.name === name).sort((a, b) => b.count - a.count)[0];
+    if (best) animateTo(best.x, best.z, 1.6);
+    renderList();
+  }
+
+  function renderList() {
+    const q = $('search').value.trim().toLowerCase();
+    const box = $('list');
+    box.textContent = '';
+    if (activeTab === 'players') {
+      const arr = players.filter(p => !q || p.name.toLowerCase().includes(q) || (p.team || '').toLowerCase().includes(q))
+                         .sort((a, b) => a.name.localeCompare(b.name));
+      if (!arr.length) { const d = document.createElement('div'); d.className = 'empty'; d.textContent = 'Çevrimiçi oyuncu yok'; box.appendChild(d); return; }
+      for (const p of arr) {
+        const row = document.createElement('div');
+        row.className = 'row' + (p.uuid === selectedUuid ? ' sel' : '');
+        const dot = document.createElement('span'); dot.className = 'dot';
+        dot.style.background = p.team ? townColor(p.team, 1, 60) : '#fff';
+        const info = document.createElement('div'); info.className = 'info';
+        const nm = document.createElement('div'); nm.className = 'nm'; nm.textContent = p.name;
+        const sub = document.createElement('div'); sub.className = 'sub';
+        sub.textContent = `${Math.round(p.x)}, ${Math.round(p.y)}, ${Math.round(p.z)} · ${p.world}` + (p.team ? ` · ${p.team}` : '');
+        info.append(nm, sub); row.append(dot, info);
+        row.onclick = () => focusPlayer(p);
+        box.appendChild(row);
+      }
+    } else {
+      const arr = claimsData.towns.filter(t => !q || t.name.toLowerCase().includes(q))
+                                  .sort((a, b) => a.name.localeCompare(b.name));
+      if (!arr.length) { const d = document.createElement('div'); d.className = 'empty'; d.textContent = 'Kasaba yok'; box.appendChild(d); return; }
+      for (const t of arr) {
+        const row = document.createElement('div'); row.className = 'row';
+        const dot = document.createElement('span'); dot.className = 'dot'; dot.style.background = townColor(t.name, 1, 55);
+        const info = document.createElement('div'); info.className = 'info';
+        const nm = document.createElement('div'); nm.className = 'nm'; nm.textContent = t.name;
+        const sub = document.createElement('div'); sub.className = 'sub';
+        sub.textContent = `${t.chunkCount} chunk · ${t.members} üye` + (t.spawn ? ' · ★ spawn' : '');
+        info.append(nm, sub); row.append(dot, info);
+        row.onclick = () => focusTown(t.name);
+        box.appendChild(row);
+      }
+    }
+  }
+
+  // ---------------------------------------------------------------- veri (Firebase Realtime Database)
+  resize();   // fitToClaims için canvas boyutu hazır olmalı
+  const db = getDatabase(initializeApp({ databaseURL: FIREBASE_URL }));
+  let serverOffset = 0;          // Firebase sunucu saati - yerel saat
+  let fbConnected = false;
+  let lastUpdate = 0;            // plugin'in son yazdığı oyuncu zamanı
+  let pluginOnline = false;
+  let gotFirst = false;
+
+  function updateStatus() {
+    const age = Date.now() + serverOffset - lastUpdate;
+    let cls = '', msg = '';
+    if (!fbConnected) { cls = 'bad'; msg = 'Firebase bağlantısı yok…'; }
+    else if (!gotFirst) { msg = 'Veri bekleniyor…'; }
+    else if (!pluginOnline || age > STALE_MS) { cls = 'bad'; msg = 'Minecraft sunucusu çevrimdışı görünüyor (son veri ' + (lastUpdate ? Math.round(age / 1000) + ' sn önce' : 'yok') + ')'; }
+    $('status').className = cls || 'ok';
+    if (!cls && !msg) { $('banner').style.display = 'none'; return; }
+    $('banner').textContent = msg;
+    $('banner').style.background = cls === 'bad' ? 'var(--bad)' : '#556';
+    $('banner').style.display = 'block';
+  }
+  setInterval(updateStatus, 2000);
+
+  onValue(ref(db, '.info/serverTimeOffset'), s => { serverOffset = s.val() || 0; });
+  onValue(ref(db, '.info/connected'), s => { fbConnected = !!s.val(); updateStatus(); });
+
+  // --- oyuncular
+  onValue(ref(db, ROOT + '/players'), snap => {
+    const v = snap.val() || {};
+    gotFirst = true;
+    lastUpdate = v.updated || 0;
+    pluginOnline = !!v.online;
+    players = Object.entries(v.players || {}).map(([uuid, p]) => ({ uuid, ...p }));
+    if (selectedUuid && !players.some(x => x.uuid === selectedUuid)) selectedUuid = null;
+    refreshWorldSelect();
+    $('nPlayers').textContent = players.length;
+    if (activeTab === 'players') renderList();
+    updateStatus();
+    markDirty();
+  });
+
+  // --- claim'ler
+  function convertClaims(v) {
+    const towns = [];
+    for (const t of Object.values((v && v.towns) || {})) {
+      const chunks = {};
+      for (const [w, str] of Object.entries(t.chunks || {})) {
+        chunks[w] = String(str).split(';').filter(Boolean).map(x => x.split(',').map(Number));
+      }
+      towns.push({ name: t.name, members: t.members || 0, chunkCount: t.chunkCount || 0, chunks, spawn: t.spawn || null });
+    }
+    return towns;
+  }
+  onValue(ref(db, ROOT + '/claims'), snap => {
+    const towns = convertClaims(snap.val());
+    claimsData = { towns };
+    render = buildRender(towns);
+    for (const t of towns) for (const w of Object.keys(t.chunks)) subscribeBlocks(w);
+    refreshWorldSelect();
+    $('nTowns').textContent = towns.length;
+    if (firstFit && world) { firstFit = false; fitToClaims(); }
+    renderList();
+    markDirty();
+  });
+
+  // --- bloklar (chunk başına 16x16 renk haritası)
+  function subscribeBlocks(w) {
+    if (subscribed.has(w)) return;
+    subscribed.add(w);
+    const r = ref(db, ROOT + '/blocks/' + w);
+    const set = s => setChunk(w, s.key, s.val());
+    onChildAdded(r, set);
+    onChildChanged(r, set);
+    onChildRemoved(r, s => { blockCache[w]?.delete(s.key); markDirty(); });
+  }
+  function setChunk(w, key, v) {
+    if (!v || !v.p || !v.d) return;
+    const us = key.lastIndexOf('_');
+    const cx = parseInt(key.slice(0, us), 10), cz = parseInt(key.slice(us + 1), 10);
+    if (Number.isNaN(cx) || Number.isNaN(cz)) return;
+    const pal = [], rgb = [];
+    for (const e of String(v.p).split(',')) {
+      if (e === '-') { pal.push(''); rgb.push(null); continue; }
+      const k = e.indexOf('|');
+      const hex = e.slice(0, k);
+      pal.push(e.slice(k + 1));
+      rgb.push([parseInt(hex.slice(0, 2), 16), parseInt(hex.slice(2, 4), 16), parseInt(hex.slice(4, 6), 16)]);
+    }
+    const cvs = document.createElement('canvas');
+    cvs.width = cvs.height = 16;
+    const c2 = cvs.getContext('2d');
+    const img = c2.createImageData(16, 16);
+    const idx = new Uint16Array(256);
+    const d = String(v.d);
+    for (let i = 0; i < 256; i++) {
+      const id = B64.indexOf(d[i * 2]) * 64 + B64.indexOf(d[i * 2 + 1]);
+      idx[i] = id;
+      const col = rgb[id];
+      if (col) { img.data[i * 4] = col[0]; img.data[i * 4 + 1] = col[1]; img.data[i * 4 + 2] = col[2]; img.data[i * 4 + 3] = 255; }
+    }
+    c2.putImageData(img, 0, 0);
+    (blockCache[w] || (blockCache[w] = new Map())).set(key, { cx, cz, canvas: cvs, pal, idx });
+    markDirty();
+  }
+
+  // ---------------------------------------------------------------- başlat
+  resize();
+  $('followRow').style.display = 'flex';
+  requestAnimationFrame(frame);
+  updateStatus();
+})();
+</script>
+</body>
+</html>
