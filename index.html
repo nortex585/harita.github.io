@@ -5,116 +5,193 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
 <title>TakimLock Harita</title>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🗺️</text></svg>">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600&family=JetBrains+Mono:wght@500&display=swap" rel="stylesheet">
 <style>
   :root {
-    --bg: #1b2218;
-    --panel: #12161ccc;
-    --panel-solid: #12161c;
-    --line: #2a313b;
-    --text: #e8ecf1;
-    --muted: #8b95a3;
-    --accent: #ffcc33;
-    --ok: #4cd964;
-    --bad: #ff5a52;
+    --panel: rgba(38, 36, 32, .94);
+    --panel-head: rgba(74, 74, 82, .96);
+    --btn: rgba(44, 43, 42, .94);
+    --btn-hover: rgba(66, 64, 60, .98);
+    --line: rgba(255,255,255,.08);
+    --fg: #f1efe9;
+    --fg-muted: #a7a399;
+    --accent: #7cc4ff;
+    --ok: #3fb950;
+    --bad: #f85149;
+    --mono: "JetBrains Mono", ui-monospace, Menlo, Consolas, monospace;
   }
   * { box-sizing: border-box; }
-  html, body { margin: 0; height: 100%; overflow: hidden; background: var(--bg); color: var(--text);
-    font: 14px/1.4 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
-  #app { position: fixed; inset: 0; display: flex; }
-  #mapWrap { position: relative; flex: 1; min-width: 0; }
-  canvas { display: block; width: 100%; height: 100%; cursor: grab; touch-action: none; }
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #2b4aa8; color: var(--fg);
+    font: 15px/1.4 "Outfit", -apple-system, "Segoe UI", sans-serif; -webkit-tap-highlight-color: transparent; }
+  canvas { position: fixed; inset: 0; width: 100%; height: 100%; display: block; cursor: grab; touch-action: none; }
   canvas.dragging { cursor: grabbing; }
+  svg { fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; display: block; }
 
-  /* üst bar */
-  #topbar { position: absolute; top: 10px; left: 10px; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
-  .chip { background: var(--panel); backdrop-filter: blur(6px); border: 1px solid var(--line); border-radius: 10px;
-    padding: 6px 10px; display: flex; align-items: center; gap: 8px; }
-  #title { font-weight: 700; letter-spacing: .2px; }
-  #status { width: 9px; height: 9px; border-radius: 50%; background: var(--muted); display: inline-block; }
-  #status.ok { background: var(--ok); box-shadow: 0 0 6px var(--ok); }
-  #status.bad { background: var(--bad); box-shadow: 0 0 6px var(--bad); }
-  select, input[type=text] { background: #0c0f13; color: var(--text); border: 1px solid var(--line); border-radius: 8px;
-    padding: 5px 8px; font: inherit; outline: none; }
-  select:focus, input[type=text]:focus { border-color: var(--accent); }
-  button { background: #0c0f13; color: var(--text); border: 1px solid var(--line); border-radius: 8px;
-    padding: 5px 10px; font: inherit; cursor: pointer; }
-  button:hover { border-color: var(--accent); }
+  .glass { background: var(--panel); border: 1px solid var(--line); border-radius: 14px;
+    box-shadow: 0 8px 28px rgba(0,0,0,.35); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); }
+  .ibtn { width: 50px; height: 50px; border-radius: 13px; border: 1px solid var(--line); background: var(--btn);
+    color: var(--fg); display: grid; place-items: center; cursor: pointer; box-shadow: 0 6px 18px rgba(0,0,0,.35);
+    backdrop-filter: blur(10px); transition: background .15s, transform .1s; font: inherit; padding: 0; }
+  .ibtn:hover { background: var(--btn-hover); }
+  .ibtn:active { transform: scale(.95); }
+  .ibtn.on { background: rgba(90,90,100,.95); }
+  .ibtn svg { width: 24px; height: 24px; }
 
-  /* zoom butonları */
-  #zoom { position: absolute; right: 12px; bottom: 44px; display: flex; flex-direction: column; gap: 6px; }
-  #zoom button { width: 38px; height: 38px; font-size: 20px; padding: 0; background: var(--panel); backdrop-filter: blur(6px); }
+  /* ---- sol üst: zoom + katmanlar ---- */
+  #leftTop { position: fixed; top: 12px; left: 12px; z-index: 10; display: flex; flex-direction: column; gap: 10px; align-items: flex-start; }
+  #zoomBox { display: flex; flex-direction: column; border-radius: 13px; overflow: hidden; border: 1px solid var(--line);
+    box-shadow: 0 6px 18px rgba(0,0,0,.35); }
+  #zoomBox .ibtn { border-radius: 0; box-shadow: none; border: 0; width: 52px; height: 50px; font-size: 24px; font-weight: 500; }
+  #zoomBox .ibtn + .ibtn { border-top: 1px solid var(--line); }
+  #layerWrap { position: relative; display: flex; align-items: flex-start; gap: 10px; }
+  #layerMenu { display: none; padding: 14px 16px; min-width: 180px; }
+  #layerMenu.open { display: block; }
+  #layerMenu label { display: flex; align-items: center; gap: 12px; padding: 5px 0; cursor: pointer; font-size: 16px; user-select: none; }
+  #layerMenu input { display: none; }
+  .chk { width: 22px; height: 22px; border: 2px solid #cfcbc2; border-radius: 6px; display: grid; place-items: center; flex: none; transition: .15s; }
+  .chk svg { width: 16px; height: 16px; stroke-width: 2.6; opacity: 0; }
+  #layerMenu input:checked + .chk { background: rgba(124,196,255,.15); border-color: var(--accent); }
+  #layerMenu input:checked + .chk svg { opacity: 1; color: var(--accent); }
+  #layerMenu hr { border: 0; border-top: 1px solid var(--line); margin: 8px 0; }
+  #worldSel { width: 100%; background: rgba(0,0,0,.3); color: var(--fg); border: 1px solid var(--line); border-radius: 8px;
+    padding: 6px 8px; font: inherit; font-size: 14px; outline: none; margin-top: 4px; }
 
-  #statusbar { position: absolute; left: 0; right: 0; bottom: 0; padding: 4px 12px; font-size: 12px; color: var(--muted);
-    background: linear-gradient(transparent, #000a); display: flex; gap: 16px; pointer-events: none; }
-  #statusbar b { color: var(--text); font-weight: 600; }
-  #banner { position: absolute; top: 56px; z-index: 5; left: 50%; transform: translateX(-50%); background: var(--bad); color: #fff;
-    padding: 6px 14px; border-radius: 999px; font-weight: 600; display: none; }
+  /* ---- sağ üst: buton + paneller ---- */
+  #rightTop { position: fixed; top: 12px; right: 12px; z-index: 10; width: 270px; max-width: calc(100vw - 24px);
+    display: flex; flex-direction: column; gap: 10px; align-items: flex-end; max-height: calc(100vh - 80px); }
+  #topBtns { display: flex; gap: 10px; }
+  #panels { width: 100%; display: flex; flex-direction: column; gap: 10px; min-height: 0; }
+  .panel { overflow: hidden; display: none; flex-direction: column; min-height: 0; }
+  .panel.show { display: flex; }
+  #pPlayers.show { flex: 1 1 auto; }
+  .phead { background: var(--panel-head); padding: 11px 16px; display: flex; align-items: center; justify-content: space-between;
+    font-weight: 600; font-size: 16px; cursor: pointer; user-select: none; }
+  .phead svg { width: 20px; height: 20px; transition: transform .2s; }
+  .panel.collapsed .phead svg { transform: rotate(180deg); }
+  .panel.collapsed .pbody { display: none; }
+  .pbody { overflow-y: auto; min-height: 0; padding: 8px 0 6px; }
+  .pbody::-webkit-scrollbar { width: 8px; } .pbody::-webkit-scrollbar-thumb { background: rgba(255,255,255,.18); border-radius: 8px; }
+  .psearch { padding: 6px 14px 8px; }
+  .psearch input { width: 100%; background: rgba(0,0,0,.35); border: 1px solid var(--line); color: var(--fg); border-radius: 20px;
+    padding: 8px 14px; font: inherit; font-size: 14px; outline: none; }
+  .psearch input:focus { border-color: var(--accent); }
+  .psearch input::placeholder { color: var(--fg-muted); }
+  .item { display: flex; align-items: center; gap: 12px; padding: 7px 16px; cursor: pointer; transition: background .12s; }
+  .item:hover { background: rgba(255,255,255,.07); }
+  .item.sel { background: rgba(124,196,255,.14); box-shadow: inset 3px 0 0 var(--accent); }
+  .item img { width: 22px; height: 22px; border-radius: 4px; image-rendering: pixelated; flex: none; background: #555; }
+  .item .nm { font-size: 16px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .item .sb { font-size: 12px; color: var(--fg-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .item .col { min-width: 0; flex: 1; }
+  .mk { padding: 9px 20px; cursor: pointer; transition: background .12s; }
+  .mk:hover { background: rgba(255,255,255,.07); }
+  .mk .t { font-size: 17px; font-weight: 500; }
+  .mk .c { font-size: 13px; color: var(--fg-muted); }
+  .mk.off .t { opacity: .45; text-decoration: line-through; }
+  .dotc { width: 12px; height: 12px; border-radius: 50%; flex: none; border: 1px solid rgba(255,255,255,.3); }
+  .empty { padding: 18px 16px; text-align: center; color: var(--fg-muted); font-size: 14px; }
+  #townList { display: none; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); background: rgba(0,0,0,.18); max-height: 240px; overflow-y: auto; }
+  #townList.open { display: block; }
 
-  /* sağ panel */
-  #side { width: 300px; background: var(--panel-solid); border-left: 1px solid var(--line); display: flex; flex-direction: column; }
-  #tabs { display: flex; border-bottom: 1px solid var(--line); }
-  .tab { flex: 1; text-align: center; padding: 11px 6px; cursor: pointer; color: var(--muted); font-weight: 600;
-    border-bottom: 2px solid transparent; user-select: none; }
-  .tab.active { color: var(--text); border-bottom-color: var(--accent); }
-  .tab .n { background: #232a33; border-radius: 999px; padding: 1px 7px; margin-left: 4px; font-size: 12px; color: var(--text); }
-  #searchBox { padding: 8px 10px; border-bottom: 1px solid var(--line); }
-  #searchBox input { width: 100%; }
-  #list { flex: 1; overflow-y: auto; }
-  .row { display: flex; gap: 10px; align-items: center; padding: 9px 12px; border-bottom: 1px solid #1b2129; cursor: pointer; }
-  .row:hover { background: #1a2028; }
-  .row.sel { background: #232b36; box-shadow: inset 3px 0 0 var(--accent); }
-  .dot { width: 12px; height: 12px; border-radius: 50%; flex: none; border: 2px solid #fff6; }
-  .info { min-width: 0; flex: 1; }
-  .nm { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .sub { color: var(--muted); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .empty { padding: 24px; text-align: center; color: var(--muted); }
-  #followRow { padding: 8px 12px; border-top: 1px solid var(--line); display: flex; align-items: center; gap: 8px; color: var(--muted); }
-  #sideToggle { display: none; }
-  .tgl { cursor: pointer; user-select: none; padding: 5px 10px; }
-  .tgl input { margin: 0; accent-color: var(--accent); }
+  /* ---- sol alt ---- */
+  #leftBottom { position: fixed; left: 12px; bottom: 12px; z-index: 10; display: flex; gap: 10px; align-items: stretch; }
+  #leftBottom .ibtn { height: 50px; }
+  #locBox { padding: 5px 16px 6px; display: flex; flex-direction: column; justify-content: center; min-width: 160px; }
+  #locBox small { color: var(--fg-muted); font-size: 12px; line-height: 14px; }
+  #locBox b { font-family: var(--mono); font-weight: 500; font-size: 18px; letter-spacing: .3px; line-height: 22px; }
+  #info { position: fixed; left: 12px; bottom: 74px; z-index: 9; font-size: 12px; color: rgba(255,255,255,.85);
+    text-shadow: 0 1px 3px #000; display: flex; gap: 14px; pointer-events: none; }
+  #info b { font-family: var(--mono); font-weight: 500; }
 
-  @media (max-width: 700px) {
-    #app { flex-direction: column; }
-    #side { width: 100%; height: 38vh; border-left: 0; border-top: 1px solid var(--line); }
-    #zoom { bottom: 36px; }
+  /* ---- durum pill + banner ---- */
+  #pill { position: fixed; bottom: 14px; right: 14px; z-index: 10; padding: 6px 14px 6px 12px; border-radius: 30px; display: flex; gap: 8px; align-items: center; font-size: 13px; }
+  #dot { width: 9px; height: 9px; border-radius: 50%; background: var(--fg-muted); }
+  #dot.ok { background: var(--ok); box-shadow: 0 0 0 3px rgba(63,185,80,.25); }
+  #dot.bad { background: var(--bad); box-shadow: 0 0 0 3px rgba(248,81,73,.25); }
+  #banner { position: fixed; top: 14px; left: 50%; transform: translateX(-50%); z-index: 11; padding: 7px 18px; border-radius: 30px;
+    font-weight: 500; font-size: 14px; display: none; box-shadow: 0 6px 18px rgba(0,0,0,.4); }
+  #loading { position: fixed; bottom: 74px; right: 14px; z-index: 9; padding: 5px 12px; border-radius: 20px; font-size: 12px; color: var(--fg-muted); display: none; }
+  #loading b { color: var(--fg); font-family: var(--mono); font-weight: 500; }
+  #toast { position: fixed; bottom: 80px; left: 50%; transform: translateX(-50%); z-index: 20; padding: 8px 18px; border-radius: 30px; font-size: 14px; opacity: 0; transition: opacity .25s; pointer-events: none; }
+  #toast.show { opacity: 1; }
+
+  @media (max-width: 640px) {
+    #rightTop { width: 230px; }
+    #info { display: none; }
+    #pill span { display: none; }
+    #locBox { min-width: 130px; } #locBox b { font-size: 15px; }
   }
 </style>
 </head>
 <body>
-<div id="app">
-  <div id="mapWrap">
-    <canvas id="cv"></canvas>
-    <div id="topbar">
-      <div class="chip"><span id="status"></span><span id="title">TakimLock Harita</span></div>
-      <div class="chip"><span style="color:var(--muted)">Dünya</span><select id="worldSel"></select></div>
-      <button id="fitBtn" title="Tüm kasabaları sığdır">⤢ Sığdır</button>
-      <label class="chip tgl"><input type="checkbox" id="showBlocks" checked> Bloklar</label>
-      <label class="chip tgl"><input type="checkbox" id="showFill" checked> Kasaba rengi</label>
-    </div>
-    <div id="banner">Bağlanılıyor…</div>
-    <div id="zoom">
-      <button id="zin" title="Yakınlaştır">+</button>
-      <button id="zout" title="Uzaklaştır">−</button>
-    </div>
-    <div id="statusbar">
-      <span>İmleç: <b id="sbCursor">-</b></span>
-      <span>Chunk: <b id="sbChunk">-</b></span>
-      <span>Kasaba: <b id="sbTown">-</b></span>
-      <span>Blok: <b id="sbBlock">-</b></span>
-      <span style="margin-left:auto">Zoom: <b id="sbZoom">-</b></span>
+<canvas id="cv"></canvas>
+
+<!-- sol üst -->
+<div id="leftTop">
+  <div id="zoomBox">
+    <button class="ibtn" id="zin" title="Yakınlaştır">+</button>
+    <button class="ibtn" id="zout" title="Uzaklaştır">−</button>
+  </div>
+  <div id="layerWrap">
+    <button class="ibtn" id="layerBtn" title="Katmanlar">
+      <svg viewBox="0 0 24 24"><path d="M12 3 2.5 8.2 12 13.4l9.5-5.2L12 3Z"/><path d="m2.5 12.2 9.5 5.2 9.5-5.2"/><path d="m2.5 16 9.5 5.2L21.5 16"/></svg>
+    </button>
+    <div id="layerMenu" class="glass">
+      <label><input type="checkbox" id="lBorder" checked><span class="chk"><svg viewBox="0 0 24 24"><path d="m5 12 5 5L20 7"/></svg></span>Sınır</label>
+      <label><input type="checkbox" id="lTowns" checked><span class="chk"><svg viewBox="0 0 24 24"><path d="m5 12 5 5L20 7"/></svg></span>Kasabalar</label>
+      <label><input type="checkbox" id="lPlayers" checked><span class="chk"><svg viewBox="0 0 24 24"><path d="m5 12 5 5L20 7"/></svg></span>Oyuncular</label>
+      <label><input type="checkbox" id="lSiege" checked><span class="chk"><svg viewBox="0 0 24 24"><path d="m5 12 5 5L20 7"/></svg></span>Kuşatmalar</label>
+      <hr>
+      <label><input type="checkbox" id="lTerrain" checked><span class="chk"><svg viewBox="0 0 24 24"><path d="m5 12 5 5L20 7"/></svg></span>Arazi</label>
+      <label><input type="checkbox" id="lBlocks" checked><span class="chk"><svg viewBox="0 0 24 24"><path d="m5 12 5 5L20 7"/></svg></span>Claim blokları</label>
+      <hr>
+      <select id="worldSel" title="Dünya"></select>
     </div>
   </div>
-
-  <aside id="side">
-    <div id="tabs">
-      <div class="tab active" data-tab="players">Oyuncular<span class="n" id="nPlayers">0</span></div>
-      <div class="tab" data-tab="towns">Kasabalar<span class="n" id="nTowns">0</span></div>
-    </div>
-    <div id="searchBox"><input type="text" id="search" placeholder="Ara…"></div>
-    <div id="list"></div>
-    <div id="followRow"><input type="checkbox" id="follow"><label for="follow">Seçili oyuncuyu takip et</label></div>
-  </aside>
 </div>
+
+<!-- sağ üst -->
+<div id="rightTop">
+  <div id="topBtns">
+    <button class="ibtn" id="btnMarkers" title="İşaretleyiciler">
+      <svg viewBox="0 0 24 24"><path d="M12 22s7-6.2 7-12a7 7 0 1 0-14 0c0 5.8 7 12 7 12Z"/><circle cx="12" cy="10" r="2.6"/></svg>
+    </button>
+    <button class="ibtn" id="btnPlayers" title="Oyuncular">
+      <svg viewBox="0 0 24 24"><circle cx="9" cy="8" r="3.6"/><path d="M2.5 20c0-3.6 2.9-6 6.5-6s6.5 2.4 6.5 6"/><circle cx="17" cy="9.5" r="2.7"/><path d="M17.5 14.3c2.6.2 4.2 2.1 4.2 4.7"/></svg>
+    </button>
+  </div>
+  <div id="panels">
+    <div class="panel glass" id="pMarkers">
+      <div class="phead"><span>İşaretleyiciler</span><svg viewBox="0 0 24 24"><path d="m6 15 6-6 6 6"/></svg></div>
+      <div class="pbody">
+        <div class="mk" id="mkTowns"><div class="t">Kasabalar</div><div class="c"><span id="cTowns">0</span> İşaretleyici(ler)</div></div>
+        <div id="townList"><div class="psearch"><input type="text" id="townSearch" placeholder="Kasaba ara..."></div><div id="townItems"></div></div>
+        <div class="mk" id="mkSiege"><div class="t">Kuşatmalar</div><div class="c">0 İşaretleyici(ler)</div></div>
+        <div class="mk" id="mkBorder"><div class="t">Sınır</div><div class="c"><span id="cBorder">0</span> İşaretleyici(ler)</div></div>
+      </div>
+    </div>
+    <div class="panel glass" id="pPlayers">
+      <div class="phead"><span>Oyuncular (<span id="nPlayers">0</span>/1000)</span><svg viewBox="0 0 24 24"><path d="m6 15 6-6 6 6"/></svg></div>
+      <div class="psearch"><input type="text" id="search" placeholder="Oyuncu ara..."></div>
+      <div class="pbody" id="list"></div>
+    </div>
+  </div>
+</div>
+
+<!-- sol alt -->
+<div id="info"><span>Chunk <b id="sbChunk">-</b></span><span>Kasaba <b id="sbTown">-</b></span><span>Blok <b id="sbBlock">-</b></span><span>Zoom <b id="sbZoom">-</b></span></div>
+<div id="leftBottom">
+  <button class="ibtn" id="linkBtn" title="Bağlantıyı kopyala">
+    <svg viewBox="0 0 24 24"><path d="M10 14a4.5 4.5 0 0 0 6.4 0l3-3a4.5 4.5 0 0 0-6.4-6.4l-1 1"/><path d="M14 10a4.5 4.5 0 0 0-6.4 0l-3 3a4.5 4.5 0 0 0 6.4 6.4l1-1"/></svg>
+  </button>
+  <div id="locBox" class="glass"><small>Lokasyon</small><b id="sbCursor">0, 0</b></div>
+</div>
+
+<div id="pill" class="glass"><i id="dot"></i><span id="statusText">Bağlanılıyor</span></div>
+<div id="banner">Bağlanılıyor…</div>
+<div id="loading" class="glass">Bloklar: <b id="loadN">0</b> · Arazi: <b id="loadTN">0</b></div>
+<div id="toast" class="glass">Bağlantı kopyalandı</div>
 
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
@@ -130,29 +207,28 @@ const ROOT = "takimlock";
 (() => {
   'use strict';
 
-  // ---------------------------------------------------------------- ayarlar
-  const STALE_MS = 25000;         // bu süredir veri gelmediyse sunucu çevrimdışı say
+  const STALE_MS = 25000;
   const B64 = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_';
-  const MIN_SCALE = 0.05, MAX_SCALE = 24;   // piksel / blok
+  const MIN_SCALE = 0.05, MAX_SCALE = 24;
 
-  // ---------------------------------------------------------------- durum
   const cv = document.getElementById('cv');
   const ctx = cv.getContext('2d');
   let W = 0, H = 0, DPR = 1;
 
-  const view = { x: 0, z: 0, scale: 1.5 };   // x,z = ekran merkezinin dünya (blok) koordinatı
-  let world = null;                          // seçili dünya
+  const view = { x: 0, z: 0, scale: 1.5 };
+  let world = null;
   let claimsData = { towns: [] };
   let players = [];
-  let render = {};                           // dünya -> { towns: [...] , labels: [...], spawns: [...] }
+  let render = {};
   let selectedUuid = null;
-  let activeTab = 'players';
   let firstFit = true;
   let dirty = true;
   let anim = null;
   let hoverBlock = null;
-  const blockCache = {};                     // dünya -> Map('cx_cz' -> {cx,cz,canvas,pal,idx})
+  let hashApplied = false;
+  const blockCache = {};
   const subscribed = new Set();
+  let loadedCount = 0, loadTimer = 0;
 
   const $ = id => document.getElementById(id);
 
@@ -169,6 +245,7 @@ const ROOT = "takimlock";
   const s2wx = x => (x - W / 2) / view.scale + view.x;
   const s2wz = y => (y - H / 2) / view.scale + view.z;
   const markDirty = () => { dirty = true; };
+  const headUrl = (n, s) => `https://mc-heads.net/avatar/${encodeURIComponent(n)}/${s}`;
 
   function resize() {
     DPR = window.devicePixelRatio || 1;
@@ -180,8 +257,7 @@ const ROOT = "takimlock";
   }
   window.addEventListener('resize', resize);
 
-  // ---------------------------------------------------------------- claim verisini işle
-  // Her kasaba için: chunk kümesi, dış kenar segmentleri, bağlantılı bölgeler (etiket için), spawn.
+  // ---------------------------------------------------------------- kasaba verisini işle
   function buildRender(towns) {
     const out = {};
     const get = w => out[w] || (out[w] = { towns: [], labels: [], spawns: [] });
@@ -189,7 +265,7 @@ const ROOT = "takimlock";
     for (const t of towns) {
       for (const [w, list] of Object.entries(t.chunks || {})) {
         const set = new Set(list.map(c => c[0] + ',' + c[1]));
-        const edges = [];   // [x1,z1,x2,z2] chunk koordinatında
+        const edges = [];
         for (const [cx, cz] of list) {
           if (!set.has((cx - 1) + ',' + cz)) edges.push([cx, cz, cx, cz + 1]);
           if (!set.has((cx + 1) + ',' + cz)) edges.push([cx + 1, cz, cx + 1, cz + 1]);
@@ -199,7 +275,6 @@ const ROOT = "takimlock";
         const r = get(w);
         r.towns.push({ name: t.name, chunks: list, edges });
 
-        // bağlantılı bileşenler (4 komşuluk) -> her biri için bir etiket
         const seen = new Set();
         for (const [sx, sz] of list) {
           const k0 = sx + ',' + sz;
@@ -215,24 +290,18 @@ const ROOT = "takimlock";
               if (set.has(k) && !seen.has(k)) { seen.add(k); stack.push([nx, nz]); }
             }
           }
-          let sxm = 0, szm = 0, minX = 1e9, maxX = -1e9, minZ = 1e9, maxZ = -1e9;
+          let sxm = 0, szm = 0, minX = 1e9, maxX = -1e9;
           for (const [x, z] of comp) {
             sxm += x; szm += z;
             if (x < minX) minX = x; if (x > maxX) maxX = x;
-            if (z < minZ) minZ = z; if (z > maxZ) maxZ = z;
           }
           const mx = sxm / comp.length, mz = szm / comp.length;
-          // merkeze en yakın gerçek chunk (L şeklinde bölgelerde etiket dışarı taşmasın)
           let best = comp[0], bd = Infinity;
           for (const c of comp) {
             const d = (c[0] - mx) ** 2 + (c[1] - mz) ** 2;
             if (d < bd) { bd = d; best = c; }
           }
-          r.labels.push({
-            name: t.name,
-            x: (best[0] + 0.5) * 16, z: (best[1] + 0.5) * 16,
-            wBlocks: (maxX - minX + 1) * 16, count: comp.length
-          });
+          r.labels.push({ name: t.name, x: (best[0] + 0.5) * 16, z: (best[1] + 0.5) * 16, wBlocks: (maxX - minX + 1) * 16, count: comp.length });
         }
       }
       if (t.spawn) get(t.spawn.world).spawns.push({ name: t.name, x: t.spawn.x, y: t.spawn.y, z: t.spawn.z });
@@ -241,18 +310,18 @@ const ROOT = "takimlock";
   }
 
   // ---------------------------------------------------------------- dünya seçici
+  let metaWorlds = [];
   function knownWorlds() {
     const s = new Set(Object.keys(render));
     for (const p of players) s.add(p.world);
+    for (const w of metaWorlds) s.add(w);
     if (world) s.add(world);
     return [...s].sort();
   }
   function refreshWorldSelect() {
     const sel = $('worldSel');
     const ws = knownWorlds();
-    if (!world && ws.length) {
-      world = ws.includes('world') ? 'world' : ws[0];
-    }
+    if (!world && ws.length) world = ws.includes('world') ? 'world' : ws[0];
     const cur = [...sel.options].map(o => o.value).join('|');
     if (cur !== ws.join('|')) {
       sel.innerHTML = '';
@@ -260,7 +329,7 @@ const ROOT = "takimlock";
     }
     if (world) sel.value = world;
   }
-  $('worldSel').addEventListener('change', e => { world = e.target.value; fitToClaims(); renderList(); markDirty(); });
+  $('worldSel').addEventListener('change', e => { world = e.target.value; fitToClaims(); renderLists(); markDirty(); });
 
   // ---------------------------------------------------------------- kamera
   function animateTo(x, z, scale, ms = 550) {
@@ -269,11 +338,10 @@ const ROOT = "takimlock";
   }
   function stepAnim(now) {
     if (!anim) return;
-    let t = clamp((now - anim.t0) / anim.ms, 0, 1);
-    const e = 1 - Math.pow(1 - t, 3);   // easeOutCubic
+    const t = clamp((now - anim.t0) / anim.ms, 0, 1);
+    const e = 1 - Math.pow(1 - t, 3);
     view.x = anim.fx + (anim.tx - anim.fx) * e;
     view.z = anim.fz + (anim.tz - anim.fz) * e;
-    // ölçeği logaritmik interpolasyon
     view.scale = Math.exp(Math.log(anim.fs) + (Math.log(anim.ts) - Math.log(anim.fs)) * e);
     if (t >= 1) anim = null;
     markDirty();
@@ -295,15 +363,14 @@ const ROOT = "takimlock";
       minZ = Math.min(minZ, cz * 16); maxZ = Math.max(maxZ, cz * 16 + 16);
     }
     if (!any) { animateTo(0, 0, 1.5, 300); return; }
-    const pad = 80;
+    const pad = 100;
     const sc = clamp(Math.min((W - pad * 2) / (maxX - minX), (H - pad * 2) / (maxZ - minZ)), MIN_SCALE, 6);
     animateTo((minX + maxX) / 2, (minZ + maxZ) / 2, sc, 500);
   }
-  $('fitBtn').onclick = fitToClaims;
   $('zin').onclick = () => zoomAt(W / 2, H / 2, 1.5);
   $('zout').onclick = () => zoomAt(W / 2, H / 2, 1 / 1.5);
 
-  // ---------------------------------------------------------------- etkileşim (sürükleme / zoom / pinch)
+  // ---------------------------------------------------------------- etkileşim
   const pointers = new Map();
   let pinchDist = 0;
   cv.addEventListener('pointerdown', e => {
@@ -321,13 +388,12 @@ const ROOT = "takimlock";
     const sx = e.clientX - rect.left, sy = e.clientY - rect.top;
     hoverBlock = { x: s2wx(sx), z: s2wz(sy) };
     updateStatusBar();
-
     const p = pointers.get(e.pointerId);
     if (p) {
       if (pointers.size === 1) {
         view.x -= (e.clientX - p.x) / view.scale;
         view.z -= (e.clientY - p.y) / view.scale;
-        $('follow').checked = false;      // elle sürükleyince takibi bırak
+        followUuid = null;
       }
       p.x = e.clientX; p.y = e.clientY;
       if (pointers.size === 2) {
@@ -352,17 +418,24 @@ const ROOT = "takimlock";
     const rect = cv.getBoundingClientRect();
     zoomAt(e.clientX - rect.left, e.clientY - rect.top, 2);
   });
+  // tek tıklamada oyuncu seç
+  cv.addEventListener('click', e => {
+    const rect = cv.getBoundingClientRect();
+    const sx = e.clientX - rect.left, sy = e.clientY - rect.top;
+    if (!$('lPlayers').checked) return;
+    for (const p of players) {
+      if (p.world !== world) continue;
+      if (Math.hypot(w2sx(p.x) - sx, w2sy(p.z) - sy) < 14) { selectedUuid = p.uuid; renderPlayers(); markDirty(); return; }
+    }
+  });
 
-  function prettyName(n) {
-    return n.toLowerCase().split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
-  }
+  function prettyName(n) { return n.toLowerCase().split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' '); }
   function blockNameAt(bx, bz) {
     const c = blockCache[world]?.get((bx >> 4) + '_' + (bz >> 4));
     if (!c) return '-';
     const name = c.pal[c.idx[(bz & 15) * 16 + (bx & 15)]];
     return name ? prettyName(name) : '-';
   }
-
   function townAt(bx, bz) {
     const r = render[world]; if (!r) return null;
     const cx = Math.floor(bx / 16), cz = Math.floor(bz / 16);
@@ -372,119 +445,160 @@ const ROOT = "takimlock";
   function updateStatusBar() {
     if (hoverBlock) {
       const bx = Math.floor(hoverBlock.x), bz = Math.floor(hoverBlock.z);
-      $('sbCursor').textContent = `X ${bx}  Z ${bz}`;
+      $('sbCursor').textContent = `${bx}, ${bz}`;
       $('sbChunk').textContent = `${bx >> 4}, ${bz >> 4}`;
       $('sbTown').textContent = townAt(bx, bz) || '-';
       $('sbBlock').textContent = blockNameAt(bx, bz);
     } else {
-      $('sbCursor').textContent = $('sbChunk').textContent = $('sbTown').textContent = $('sbBlock').textContent = '-';
+      $('sbCursor').textContent = `${Math.round(view.x)}, ${Math.round(view.z)}`;
+      $('sbChunk').textContent = $('sbTown').textContent = $('sbBlock').textContent = '-';
     }
-    $('sbZoom').textContent = view.scale.toFixed(2) + ' px/blok';
+    $('sbZoom').textContent = view.scale.toFixed(2);
   }
 
   // ---------------------------------------------------------------- çizim
   function drawGrid() {
-    // chunk ızgarası: yeterince yakınsa her 16 blok, değilse 2^k * 16
     let step = 16;
     while (step * view.scale < 14) step *= 2;
     const x0 = s2wx(0), x1 = s2wx(W), z0 = s2wz(0), z1 = s2wz(H);
-
     ctx.lineWidth = 1;
-    ctx.strokeStyle = 'rgba(255,255,255,0.055)';
+    ctx.strokeStyle = 'rgba(255,255,255,0.06)';
     ctx.beginPath();
-    for (let x = Math.floor(x0 / step) * step; x <= x1; x += step) {
-      const sx = Math.round(w2sx(x)) + 0.5; ctx.moveTo(sx, 0); ctx.lineTo(sx, H);
-    }
-    for (let z = Math.floor(z0 / step) * step; z <= z1; z += step) {
-      const sy = Math.round(w2sy(z)) + 0.5; ctx.moveTo(0, sy); ctx.lineTo(W, sy);
-    }
+    for (let x = Math.floor(x0 / step) * step; x <= x1; x += step) { const sx = Math.round(w2sx(x)) + 0.5; ctx.moveTo(sx, 0); ctx.lineTo(sx, H); }
+    for (let z = Math.floor(z0 / step) * step; z <= z1; z += step) { const sy = Math.round(w2sy(z)) + 0.5; ctx.moveTo(0, sy); ctx.lineTo(W, sy); }
     ctx.stroke();
-
-    // bölge (512) çizgileri
     if (512 * view.scale >= 40) {
-      ctx.strokeStyle = 'rgba(255,255,255,0.12)';
+      ctx.strokeStyle = 'rgba(255,255,255,0.14)';
       ctx.beginPath();
-      for (let x = Math.floor(x0 / 512) * 512; x <= x1; x += 512) {
-        const sx = Math.round(w2sx(x)) + 0.5; ctx.moveTo(sx, 0); ctx.lineTo(sx, H);
-      }
-      for (let z = Math.floor(z0 / 512) * 512; z <= z1; z += 512) {
-        const sy = Math.round(w2sy(z)) + 0.5; ctx.moveTo(0, sy); ctx.lineTo(W, sy);
-      }
+      for (let x = Math.floor(x0 / 512) * 512; x <= x1; x += 512) { const sx = Math.round(w2sx(x)) + 0.5; ctx.moveTo(sx, 0); ctx.lineTo(sx, H); }
+      for (let z = Math.floor(z0 / 512) * 512; z <= z1; z += 512) { const sy = Math.round(w2sy(z)) + 0.5; ctx.moveTo(0, sy); ctx.lineTo(W, sy); }
       ctx.stroke();
     }
+  }
 
-    // eksenler (X=0, Z=0)
-    ctx.strokeStyle = 'rgba(255,255,255,0.28)';
-    ctx.beginPath();
-    const ox = Math.round(w2sx(0)) + 0.5, oz = Math.round(w2sy(0)) + 0.5;
-    if (ox >= 0 && ox <= W) { ctx.moveTo(ox, 0); ctx.lineTo(ox, H); }
-    if (oz >= 0 && oz <= H) { ctx.moveTo(0, oz); ctx.lineTo(W, oz); }
-    ctx.stroke();
+  let decodeBudget = 0, frameNo = 0;
 
-    // koordinat etiketleri (kenarlarda)
-    let lstep = step;
-    while (lstep * view.scale < 90) lstep *= 2;
-    ctx.fillStyle = 'rgba(255,255,255,0.35)';
-    ctx.font = '11px system-ui, sans-serif';
-    ctx.textAlign = 'center'; ctx.textBaseline = 'top';
-    for (let x = Math.floor(x0 / lstep) * lstep; x <= x1; x += lstep) ctx.fillText(x, w2sx(x), 52);
-    ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
-    for (let z = Math.floor(z0 / lstep) * lstep; z <= z1; z += lstep) ctx.fillText(z, 6, w2sy(z));
+  const tileIdx = {};
+  const tiles = new Map();
+  const tileSubs = new Set();
+  let tileInflight = 0;
+  const TILE_MAX_INFLIGHT = 6, TILE_CACHE = 260;
+
+  function loadTile(w, key, t) {
+    const id = w + '/' + key;
+    const rec = tiles.get(id) || { t: -1, img: null, loading: false, used: 0 };
+    tiles.set(id, rec);
+    rec.loading = true; tileInflight++;
+    fetch(`${FIREBASE_URL}/${ROOT}/tiles/${w}/${key}/i.json`)
+      .then(r => r.json())
+      .then(b64 => new Promise((res, rej) => {
+        if (!b64) return rej();
+        const img = new Image();
+        img.onload = () => { rec.img = img; res(); };
+        img.onerror = rej;
+        img.src = 'data:image/png;base64,' + b64;
+      }))
+      .catch(() => {})
+      .finally(() => {
+        rec.t = t; rec.loading = false; tileInflight--;
+        if (tiles.size > TILE_CACHE) {
+          [...tiles.entries()].filter(([, v]) => !v.loading).sort((a, b) => a[1].used - b[1].used)
+            .slice(0, tiles.size - TILE_CACHE).forEach(([k]) => tiles.delete(k));
+        }
+        markDirty();
+      });
+  }
+
+  let tilePending = 0;
+  function drawTerrain() {
+    tilePending = 0;
+    if (!$('lTerrain').checked) return;
+    const idx = tileIdx[world]; if (!idx) return;
+    const size = 512 * view.scale;
+    ctx.imageSmoothingEnabled = view.scale < 0.9;
+    const want = [];
+    for (const key in idx) {
+      const us = key.lastIndexOf('_');
+      const rx = +key.slice(0, us), rz = +key.slice(us + 1);
+      const sx = w2sx(rx * 512), sy = w2sy(rz * 512);
+      if (sx > W || sy > H || sx + size < 0 || sy + size < 0) continue;
+      const rec = tiles.get(world + '/' + key);
+      if (rec && rec.img) { ctx.drawImage(rec.img, sx, sy, size + 0.6, size + 0.6); rec.used = frameNo; }
+      if ((!rec || rec.t !== idx[key]) && !(rec && rec.loading)) {
+        want.push({ key, t: idx[key], d: (sx + size / 2 - W / 2) ** 2 + (sy + size / 2 - H / 2) ** 2 });
+      }
+    }
+    if (want.length) {
+      want.sort((a, b) => a.d - b.d);
+      for (const q of want) { if (tileInflight >= TILE_MAX_INFLIGHT) break; loadTile(world, q.key, q.t); }
+      tilePending = want.length;
+    }
   }
 
   function drawBlocks() {
-    if (!$('showBlocks').checked) return;
+    if (!$('lBlocks').checked) return;
     const m = blockCache[world]; if (!m) return;
     const s16 = 16 * view.scale;
+    const detail = s16 >= 6;
     ctx.imageSmoothingEnabled = view.scale < 1;
+    let pending = false;
     for (const c of m.values()) {
       const sx = w2sx(c.cx * 16), sy = w2sy(c.cz * 16);
       if (sx > W || sy > H || sx + s16 < 0 || sy + s16 < 0) continue;
-      ctx.drawImage(c.canvas, sx, sy, s16 + 0.6, s16 + 0.6);
+      if (detail) {
+        if (!c.canvas && decodeBudget > 0) { buildCanvas(c); decodeBudget--; }
+        if (c.canvas) { ctx.drawImage(c.canvas, sx, sy, s16 + 0.6, s16 + 0.6); continue; }
+        pending = true;
+      }
+      ctx.fillStyle = c.avg;
+      ctx.fillRect(sx, sy, s16 + 0.6, s16 + 0.6);
     }
+    if (pending) dirty = true;
   }
 
   function drawClaims() {
     const r = render[world]; if (!r) return;
     const s16 = 16 * view.scale;
+    const showTowns = $('lTowns').checked, showBorder = $('lBorder').checked;
 
-    // dolgu
-    for (const t of r.towns) {
-      if (!$('showFill').checked) continue;
-      ctx.fillStyle = townColor(t.name, $('showBlocks').checked && blockCache[world] ? 0.2 : 0.38);
-      for (const [cx, cz] of t.chunks) {
-        const sx = w2sx(cx * 16), sy = w2sy(cz * 16);
-        if (sx > W || sy > H || sx + s16 < 0 || sy + s16 < 0) continue;
-        ctx.fillRect(sx, sy, s16 + 0.6, s16 + 0.6);
+    if (showTowns) {
+      for (const t of r.towns) {
+        ctx.fillStyle = townColor(t.name, $('lBlocks').checked && blockCache[world] ? 0.22 : 0.38);
+        for (const [cx, cz] of t.chunks) {
+          const sx = w2sx(cx * 16), sy = w2sy(cz * 16);
+          if (sx > W || sy > H || sx + s16 < 0 || sy + s16 < 0) continue;
+          ctx.fillRect(sx, sy, s16 + 0.6, s16 + 0.6);
+        }
       }
     }
-    // dış kenarlar
-    ctx.lineCap = 'square';
-    for (const t of r.towns) {
-      ctx.strokeStyle = townColor(t.name, 1, 58);
-      ctx.lineWidth = clamp(view.scale * 1.2, 1.5, 3.5);
-      ctx.beginPath();
-      for (const [ax, az, bx, bz] of t.edges) {
-        const x1 = w2sx(ax * 16), y1 = w2sy(az * 16), x2 = w2sx(bx * 16), y2 = w2sy(bz * 16);
-        if (Math.max(x1, x2) < 0 || Math.min(x1, x2) > W || Math.max(y1, y2) < 0 || Math.min(y1, y2) > H) continue;
-        ctx.moveTo(x1, y1); ctx.lineTo(x2, y2);
+    if (showBorder) {
+      ctx.lineCap = 'square';
+      for (const t of r.towns) {
+        ctx.strokeStyle = townColor(t.name, 1, 58);
+        ctx.lineWidth = clamp(view.scale * 1.2, 1.5, 3.5);
+        ctx.beginPath();
+        for (const [ax, az, bx, bz] of t.edges) {
+          const x1 = w2sx(ax * 16), y1 = w2sy(az * 16), x2 = w2sx(bx * 16), y2 = w2sy(bz * 16);
+          if (Math.max(x1, x2) < 0 || Math.min(x1, x2) > W || Math.max(y1, y2) < 0 || Math.min(y1, y2) > H) continue;
+          ctx.moveTo(x1, y1); ctx.lineTo(x2, y2);
+        }
+        ctx.stroke();
       }
-      ctx.stroke();
     }
-    // kasaba isimleri
-    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-    for (const l of r.labels) {
-      const sx = w2sx(l.x), sy = w2sy(l.z);
-      if (sx < -200 || sx > W + 200 || sy < -50 || sy > H + 50) continue;
-      const wPx = l.wBlocks * view.scale;
-      let fs = clamp(wPx / (l.name.length * 0.62), 0, 22);
-      if (wPx < 24) continue;                      // çok uzaksa isim yazma
-      fs = Math.max(fs, 10);
-      ctx.font = `700 ${fs}px system-ui, sans-serif`;
-      ctx.lineWidth = 4; ctx.strokeStyle = 'rgba(0,0,0,0.75)'; ctx.lineJoin = 'round';
-      ctx.strokeText(l.name, sx, sy);
-      ctx.fillStyle = '#fff';
-      ctx.fillText(l.name, sx, sy);
+    if (showTowns) {
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.lineJoin = 'round';
+      for (const l of r.labels) {
+        const sx = w2sx(l.x), sy = w2sy(l.z);
+        if (sx < -200 || sx > W + 200 || sy < -50 || sy > H + 50) continue;
+        const wPx = l.wBlocks * view.scale;
+        if (wPx < 24) continue;
+        const fs = Math.max(clamp(wPx / (l.name.length * 0.62), 0, 22), 11);
+        ctx.font = `600 ${fs}px Outfit, system-ui, sans-serif`;
+        ctx.lineWidth = 4; ctx.strokeStyle = 'rgba(0,0,0,0.75)';
+        ctx.strokeText(l.name, sx, sy);
+        ctx.fillStyle = '#fff';
+        ctx.fillText(l.name, sx, sy);
+      }
     }
   }
 
@@ -498,6 +612,7 @@ const ROOT = "takimlock";
   }
 
   function drawSpawns() {
+    if (!$('lTowns').checked) return;
     const r = render[world]; if (!r) return;
     for (const sp of r.spawns) {
       const sx = w2sx(sp.x), sy = w2sy(sp.z);
@@ -510,8 +625,7 @@ const ROOT = "takimlock";
       ctx.shadowBlur = 0;
       ctx.lineWidth = 1.6; ctx.strokeStyle = '#6b4a00'; ctx.stroke();
       ctx.restore();
-      // yazı: "Spawn · KasabaAdı"
-      ctx.font = '600 11px system-ui, sans-serif';
+      ctx.font = '500 11px Outfit, system-ui, sans-serif';
       ctx.textAlign = 'center'; ctx.textBaseline = 'top';
       const txt = 'Spawn · ' + sp.name;
       const tw = ctx.measureText(txt).width;
@@ -522,143 +636,206 @@ const ROOT = "takimlock";
     }
   }
 
+  const headImgs = new Map();
+  function headImg(name) {
+    let h = headImgs.get(name);
+    if (!h) {
+      h = { img: new Image(), ok: false };
+      h.img.onload = () => { h.ok = true; markDirty(); };
+      h.img.src = headUrl(name, 48);
+      headImgs.set(name, h);
+    }
+    return h.ok ? h.img : null;
+  }
+
   function drawPlayers(now) {
+    if (!$('lPlayers').checked) return;
     for (const p of players) {
       if (p.world !== world) continue;
       const sx = w2sx(p.x), sy = w2sy(p.z);
       if (sx < -80 || sx > W + 80 || sy < -40 || sy > H + 40) continue;
       const col = p.team ? townColor(p.team, 1, 60) : '#ffffff';
       const sel = p.uuid === selectedUuid;
-
       if (sel) {
         const pulse = (Math.sin(now / 250) + 1) / 2;
-        ctx.beginPath(); ctx.arc(sx, sy, 11 + pulse * 6, 0, Math.PI * 2);
-        ctx.strokeStyle = `rgba(255,204,51,${0.9 - pulse * 0.5})`; ctx.lineWidth = 2; ctx.stroke();
+        ctx.beginPath(); ctx.arc(sx, sy, 15 + pulse * 7, 0, Math.PI * 2);
+        ctx.strokeStyle = `rgba(124,196,255,${0.9 - pulse * 0.5})`; ctx.lineWidth = 2; ctx.stroke();
       }
-      // bakış yönü (Minecraft: yaw 0 = +Z/güney, 90 = -X/batı)
-      const yaw = p.yaw * Math.PI / 180;
-      const dx = -Math.sin(yaw), dz = Math.cos(yaw);
-      const ax = sx + dx * 14, ay = sy + dz * 14;
-      ctx.beginPath();
-      ctx.moveTo(ax, ay);
-      ctx.lineTo(sx + dx * 6 - dz * 4, sy + dz * 6 + dx * 4);
-      ctx.lineTo(sx + dx * 6 + dz * 4, sy + dz * 6 - dx * 4);
-      ctx.closePath(); ctx.fillStyle = col; ctx.fill();
+      const S = 20;
+      ctx.save();
+      ctx.shadowColor = 'rgba(0,0,0,.55)'; ctx.shadowBlur = 6;
+      ctx.fillStyle = col;
+      ctx.beginPath(); ctx.roundRect(sx - S / 2 - 2, sy - S / 2 - 2, S + 4, S + 4, 5); ctx.fill();
+      ctx.restore();
+      const hi = headImg(p.name);
+      ctx.imageSmoothingEnabled = false;
+      if (hi) ctx.drawImage(hi, sx - S / 2, sy - S / 2, S, S);
+      else { ctx.fillStyle = '#666'; ctx.fillRect(sx - S / 2, sy - S / 2, S, S); }
+      if (sel) { ctx.lineWidth = 2; ctx.strokeStyle = '#7cc4ff'; ctx.beginPath(); ctx.roundRect(sx - S / 2 - 2, sy - S / 2 - 2, S + 4, S + 4, 5); ctx.stroke(); }
 
-      ctx.beginPath(); ctx.arc(sx, sy, 6, 0, Math.PI * 2);
-      ctx.fillStyle = col; ctx.fill();
-      ctx.lineWidth = 2; ctx.strokeStyle = sel ? '#ffcc33' : '#000'; ctx.stroke();
-
-      ctx.font = '600 12px system-ui, sans-serif';
-      ctx.textAlign = 'center'; ctx.textBaseline = 'bottom';
+      ctx.font = '500 12px Outfit, system-ui, sans-serif';
+      ctx.textAlign = 'center'; ctx.textBaseline = 'top';
       const tw = ctx.measureText(p.name).width;
-      ctx.fillStyle = 'rgba(0,0,0,0.72)';
-      ctx.fillRect(sx - tw / 2 - 4, sy - 28, tw + 8, 17);
+      ctx.fillStyle = 'rgba(20,20,20,0.78)';
+      ctx.beginPath(); ctx.roundRect(sx - tw / 2 - 6, sy + S / 2 + 4, tw + 12, 18, 9); ctx.fill();
       ctx.fillStyle = '#fff';
-      ctx.fillText(p.name, sx, sy - 13);
+      ctx.fillText(p.name, sx, sy + S / 2 + 7);
+
+      // bakış yönü oku (Minecraft: yaw 0 = +Z/güney, 90 = -X/batı)
+      const yaw = (p.yaw || 0) * Math.PI / 180;
+      const dx = -Math.sin(yaw), dz = Math.cos(yaw);
+      const base = 15, tip = 25, half = 6;
+      const bx = sx + dx * base, by = sy + dz * base;
+      ctx.save();
+      ctx.shadowColor = 'rgba(0,0,0,.6)'; ctx.shadowBlur = 4;
+      ctx.beginPath();
+      ctx.moveTo(sx + dx * tip, sy + dz * tip);
+      ctx.lineTo(bx - dz * half, by + dx * half);
+      ctx.lineTo(bx + dz * half, by - dx * half);
+      ctx.closePath();
+      ctx.fillStyle = col; ctx.fill();
+      ctx.shadowBlur = 0;
+      ctx.lineWidth = 1.6; ctx.lineJoin = 'round'; ctx.strokeStyle = '#111'; ctx.stroke();
+      ctx.restore();
     }
   }
 
+  let followUuid = null;
   function frame(now) {
     stepAnim(now);
-    // takip modu
-    const f = $('follow').checked;
-    if (f && selectedUuid && !anim) {
-      const p = players.find(q => q.uuid === selectedUuid && q.world === world);
+    decodeBudget = 40;
+    frameNo++;
+    if (followUuid && !anim) {
+      const p = players.find(q => q.uuid === followUuid && q.world === world);
       if (p) { view.x += (p.x - view.x) * 0.15; view.z += (p.z - view.z) * 0.15; dirty = true; }
     }
-    const needsPulse = !!selectedUuid;   // seçili oyuncu halkası animasyonlu
-    if (dirty || needsPulse) {
+    if (dirty || selectedUuid) {
       dirty = false;
       ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
       ctx.imageSmoothingEnabled = true;
-      ctx.fillStyle = '#1b2218';
+      ctx.fillStyle = '#2b4aa8';
       ctx.fillRect(0, 0, W, H);
+      drawTerrain();
       drawBlocks();
       drawGrid();
       drawClaims();
       drawSpawns();
       drawPlayers(now);
       updateStatusBar();
+      $('loadTN').textContent = tilePending;
+      if (tilePending) $('loading').style.display = 'block';
+      else if (Date.now() - lastBlockLoad > 1500) $('loading').style.display = 'none';
     }
     requestAnimationFrame(frame);
   }
 
-  // ---------------------------------------------------------------- sağ panel
-  document.querySelectorAll('.tab').forEach(t => t.onclick = () => {
-    activeTab = t.dataset.tab;
-    document.querySelectorAll('.tab').forEach(x => x.classList.toggle('active', x === t));
-    $('followRow').style.display = activeTab === 'players' ? 'flex' : 'none';
-    renderList();
+  // ---------------------------------------------------------------- UI: butonlar, paneller
+  const pMarkers = $('pMarkers'), pPlayers = $('pPlayers');
+  function togglePanel(p, btn) {
+    const open = !p.classList.contains('show');
+    p.classList.toggle('show', open);
+    p.classList.remove('collapsed');
+    btn.classList.toggle('on', open);
+  }
+  $('btnMarkers').onclick = () => togglePanel(pMarkers, $('btnMarkers'));
+  $('btnPlayers').onclick = () => togglePanel(pPlayers, $('btnPlayers'));
+  document.querySelectorAll('.phead').forEach(h => h.onclick = () => h.parentElement.classList.toggle('collapsed'));
+  if (window.innerWidth > 760) { pMarkers.classList.add('show'); pPlayers.classList.add('show'); $('btnMarkers').classList.add('on'); $('btnPlayers').classList.add('on'); }
+
+  $('layerBtn').onclick = e => { e.stopPropagation(); $('layerMenu').classList.toggle('open'); $('layerBtn').classList.toggle('on'); };
+  document.addEventListener('pointerdown', e => {
+    if (!e.target.closest('#layerWrap')) { $('layerMenu').classList.remove('open'); $('layerBtn').classList.remove('on'); }
   });
-  $('search').addEventListener('input', renderList);
-  $('showBlocks').onchange = $('showFill').onchange = markDirty;
+  ['lBorder','lTowns','lPlayers','lSiege','lTerrain','lBlocks'].forEach(id => $(id).onchange = markDirty);
+
+  $('mkTowns').onclick = () => $('townList').classList.toggle('open');
+  $('mkBorder').onclick = () => { const c = $('lBorder'); c.checked = !c.checked; $('mkBorder').classList.toggle('off', !c.checked); markDirty(); };
+  $('mkSiege').onclick = () => { const c = $('lSiege'); c.checked = !c.checked; $('mkSiege').classList.toggle('off', !c.checked); markDirty(); };
+  $('lBorder').addEventListener('change', () => $('mkBorder').classList.toggle('off', !$('lBorder').checked));
+  $('lSiege').addEventListener('change', () => $('mkSiege').classList.toggle('off', !$('lSiege').checked));
+
+  $('search').addEventListener('input', renderPlayers);
+  $('townSearch').addEventListener('input', renderTowns);
+
+  // bağlantı kopyala
+  function toast(msg) { const t = $('toast'); t.textContent = msg; t.classList.add('show'); setTimeout(() => t.classList.remove('show'), 1600); }
+  $('linkBtn').onclick = () => {
+    const h = `#${encodeURIComponent(world || 'world')},${Math.round(view.x)},${Math.round(view.z)},${view.scale.toFixed(2)}`;
+    const url = location.origin + location.pathname + h;
+    history.replaceState(null, '', h);
+    (navigator.clipboard ? navigator.clipboard.writeText(url) : Promise.reject()).then(() => toast('Bağlantı kopyalandı'), () => toast('Adres çubuğundan kopyalayabilirsin'));
+  };
+  function applyHash() {
+    if (hashApplied || !location.hash) return false;
+    const [w, x, z, s] = decodeURIComponent(location.hash.slice(1)).split(',');
+    if (!w || isNaN(+x) || isNaN(+z)) return false;
+    hashApplied = true;
+    world = w; view.x = +x; view.z = +z; if (!isNaN(+s)) view.scale = clamp(+s, MIN_SCALE, MAX_SCALE);
+    refreshWorldSelect(); markDirty();
+    return true;
+  }
 
   function focusPlayer(p) {
     selectedUuid = p.uuid;
+    followUuid = p.uuid;
     if (p.world !== world) { world = p.world; $('worldSel').value = world; }
     animateTo(p.x, p.z, Math.max(view.scale, 2.5));
-    renderList();
+    renderPlayers();
   }
   function focusTown(name) {
     const r = render[world];
-    let lbl = null;
-    // seçili dünyada yoksa, kasabanın bulunduğu dünyaya geç
     if (!r || !r.labels.some(l => l.name === name)) {
       for (const w of Object.keys(render)) if (render[w].labels.some(l => l.name === name)) { world = w; $('worldSel').value = w; break; }
     }
     const best = (render[world]?.labels || []).filter(l => l.name === name).sort((a, b) => b.count - a.count)[0];
+    followUuid = null;
     if (best) animateTo(best.x, best.z, 1.6);
-    renderList();
   }
 
-  function renderList() {
+  function renderPlayers() {
     const q = $('search').value.trim().toLowerCase();
     const box = $('list');
     box.textContent = '';
-    if (activeTab === 'players') {
-      const arr = players.filter(p => !q || p.name.toLowerCase().includes(q) || (p.team || '').toLowerCase().includes(q))
-                         .sort((a, b) => a.name.localeCompare(b.name));
-      if (!arr.length) { const d = document.createElement('div'); d.className = 'empty'; d.textContent = 'Çevrimiçi oyuncu yok'; box.appendChild(d); return; }
-      for (const p of arr) {
-        const row = document.createElement('div');
-        row.className = 'row' + (p.uuid === selectedUuid ? ' sel' : '');
-        const dot = document.createElement('span'); dot.className = 'dot';
-        dot.style.background = p.team ? townColor(p.team, 1, 60) : '#fff';
-        const info = document.createElement('div'); info.className = 'info';
-        const nm = document.createElement('div'); nm.className = 'nm'; nm.textContent = p.name;
-        const sub = document.createElement('div'); sub.className = 'sub';
-        sub.textContent = `${Math.round(p.x)}, ${Math.round(p.y)}, ${Math.round(p.z)} · ${p.world}` + (p.team ? ` · ${p.team}` : '');
-        info.append(nm, sub); row.append(dot, info);
-        row.onclick = () => focusPlayer(p);
-        box.appendChild(row);
-      }
-    } else {
-      const arr = claimsData.towns.filter(t => !q || t.name.toLowerCase().includes(q))
-                                  .sort((a, b) => a.name.localeCompare(b.name));
-      if (!arr.length) { const d = document.createElement('div'); d.className = 'empty'; d.textContent = 'Kasaba yok'; box.appendChild(d); return; }
-      for (const t of arr) {
-        const row = document.createElement('div'); row.className = 'row';
-        const dot = document.createElement('span'); dot.className = 'dot'; dot.style.background = townColor(t.name, 1, 55);
-        const info = document.createElement('div'); info.className = 'info';
-        const nm = document.createElement('div'); nm.className = 'nm'; nm.textContent = t.name;
-        const sub = document.createElement('div'); sub.className = 'sub';
-        sub.textContent = `${t.chunkCount} chunk · ${t.members} üye` + (t.spawn ? ' · ★ spawn' : '');
-        info.append(nm, sub); row.append(dot, info);
-        row.onclick = () => focusTown(t.name);
-        box.appendChild(row);
-      }
+    const arr = players.filter(p => !q || p.name.toLowerCase().includes(q) || (p.team || '').toLowerCase().includes(q))
+                       .sort((a, b) => a.name.localeCompare(b.name));
+    if (!arr.length) { const d = document.createElement('div'); d.className = 'empty'; d.textContent = 'Çevrimiçi oyuncu yok'; box.appendChild(d); return; }
+    for (const p of arr) {
+      const row = document.createElement('div');
+      row.className = 'item' + (p.uuid === selectedUuid ? ' sel' : '');
+      const img = document.createElement('img'); img.src = headUrl(p.name, 44); img.alt = ''; img.loading = 'lazy';
+      const col = document.createElement('div'); col.className = 'col';
+      const nm = document.createElement('div'); nm.className = 'nm'; nm.textContent = p.name;
+      col.appendChild(nm);
+      if (p.team) { const sb = document.createElement('div'); sb.className = 'sb'; sb.textContent = p.team; col.appendChild(sb); }
+      row.append(img, col);
+      row.onclick = () => focusPlayer(p);
+      box.appendChild(row);
     }
   }
+  function renderTowns() {
+    const q = $('townSearch').value.trim().toLowerCase();
+    const box = $('townItems');
+    box.textContent = '';
+    const arr = claimsData.towns.filter(t => !q || t.name.toLowerCase().includes(q)).sort((a, b) => a.name.localeCompare(b.name));
+    if (!arr.length) { const d = document.createElement('div'); d.className = 'empty'; d.textContent = 'Kasaba yok'; box.appendChild(d); return; }
+    for (const t of arr) {
+      const row = document.createElement('div'); row.className = 'item';
+      const dot = document.createElement('span'); dot.className = 'dotc'; dot.style.background = townColor(t.name, 1, 55);
+      const col = document.createElement('div'); col.className = 'col';
+      const nm = document.createElement('div'); nm.className = 'nm'; nm.textContent = t.name;
+      const sb = document.createElement('div'); sb.className = 'sb'; sb.textContent = `${t.chunkCount} chunk · ${t.members} üye` + (t.spawn ? ' · ★ spawn' : '');
+      col.append(nm, sb); row.append(dot, col);
+      row.onclick = () => focusTown(t.name);
+      box.appendChild(row);
+    }
+  }
+  function renderLists() { renderPlayers(); renderTowns(); }
 
   // ---------------------------------------------------------------- veri (Firebase Realtime Database)
-  resize();   // fitToClaims için canvas boyutu hazır olmalı
+  resize();
   const db = getDatabase(initializeApp({ databaseURL: FIREBASE_URL }));
-  let serverOffset = 0;          // Firebase sunucu saati - yerel saat
-  let fbConnected = false;
-  let lastUpdate = 0;            // plugin'in son yazdığı oyuncu zamanı
-  let pluginOnline = false;
-  let gotFirst = false;
+  let serverOffset = 0, fbConnected = false, lastUpdate = 0, pluginOnline = false, gotFirst = false;
+  let lastBlockLoad = 0;
 
   function updateStatus() {
     const age = Date.now() + serverOffset - lastUpdate;
@@ -666,10 +843,11 @@ const ROOT = "takimlock";
     if (!fbConnected) { cls = 'bad'; msg = 'Firebase bağlantısı yok…'; }
     else if (!gotFirst) { msg = 'Veri bekleniyor…'; }
     else if (!pluginOnline || age > STALE_MS) { cls = 'bad'; msg = 'Minecraft sunucusu çevrimdışı görünüyor (son veri ' + (lastUpdate ? Math.round(age / 1000) + ' sn önce' : 'yok') + ')'; }
-    $('status').className = cls || 'ok';
+    $('dot').className = cls || (msg ? '' : 'ok');
+    $('statusText').textContent = cls === 'bad' ? 'Çevrimdışı' : (msg ? 'Bağlanılıyor' : 'Canlı');
     if (!cls && !msg) { $('banner').style.display = 'none'; return; }
     $('banner').textContent = msg;
-    $('banner').style.background = cls === 'bad' ? 'var(--bad)' : '#556';
+    $('banner').style.background = cls === 'bad' ? '#da3633' : '#3a3a40';
     $('banner').style.display = 'block';
   }
   setInterval(updateStatus, 2000);
@@ -677,22 +855,31 @@ const ROOT = "takimlock";
   onValue(ref(db, '.info/serverTimeOffset'), s => { serverOffset = s.val() || 0; });
   onValue(ref(db, '.info/connected'), s => { fbConnected = !!s.val(); updateStatus(); });
 
-  // --- oyuncular
+  onValue(ref(db, ROOT + '/meta/worlds'), snap => {
+    metaWorlds = Object.keys(snap.val() || {});
+    for (const w of metaWorlds) {
+      if (tileSubs.has(w)) continue;
+      tileSubs.add(w);
+      onValue(ref(db, ROOT + '/tileidx/' + w), s => { tileIdx[w] = s.val() || {}; markDirty(); });
+    }
+    refreshWorldSelect();
+    applyHash();
+  });
+
   onValue(ref(db, ROOT + '/players'), snap => {
     const v = snap.val() || {};
     gotFirst = true;
     lastUpdate = v.updated || 0;
     pluginOnline = !!v.online;
     players = Object.entries(v.players || {}).map(([uuid, p]) => ({ uuid, ...p }));
-    if (selectedUuid && !players.some(x => x.uuid === selectedUuid)) selectedUuid = null;
+    if (selectedUuid && !players.some(x => x.uuid === selectedUuid)) { selectedUuid = null; followUuid = null; }
     refreshWorldSelect();
     $('nPlayers').textContent = players.length;
-    if (activeTab === 'players') renderList();
+    renderPlayers();
     updateStatus();
     markDirty();
   });
 
-  // --- claim'ler
   function convertClaims(v) {
     const towns = [];
     for (const t of Object.values((v && v.towns) || {})) {
@@ -710,13 +897,13 @@ const ROOT = "takimlock";
     render = buildRender(towns);
     for (const t of towns) for (const w of Object.keys(t.chunks)) subscribeBlocks(w);
     refreshWorldSelect();
-    $('nTowns').textContent = towns.length;
-    if (firstFit && world) { firstFit = false; fitToClaims(); }
-    renderList();
+    $('cTowns').textContent = towns.length;
+    $('cBorder').textContent = towns.length ? 1 : 0;
+    if (firstFit && world) { firstFit = false; if (!applyHash()) fitToClaims(); }
+    renderTowns();
     markDirty();
   });
 
-  // --- bloklar (chunk başına 16x16 renk haritası)
   function subscribeBlocks(w) {
     if (subscribed.has(w)) return;
     subscribed.add(w);
@@ -726,6 +913,19 @@ const ROOT = "takimlock";
     onChildChanged(r, set);
     onChildRemoved(r, s => { blockCache[w]?.delete(s.key); markDirty(); });
   }
+  function buildCanvas(c) {
+    const cvs = document.createElement('canvas');
+    cvs.width = cvs.height = 16;
+    const c2 = cvs.getContext('2d');
+    const img = c2.createImageData(16, 16);
+    for (let i = 0; i < 256; i++) {
+      const col = c.rgb[c.idx[i]];
+      if (col) { img.data[i * 4] = col[0]; img.data[i * 4 + 1] = col[1]; img.data[i * 4 + 2] = col[2]; img.data[i * 4 + 3] = 255; }
+    }
+    c2.putImageData(img, 0, 0);
+    c.canvas = cvs;
+  }
+
   function setChunk(w, key, v) {
     if (!v || !v.p || !v.d) return;
     const us = key.lastIndexOf('_');
@@ -739,26 +939,29 @@ const ROOT = "takimlock";
       pal.push(e.slice(k + 1));
       rgb.push([parseInt(hex.slice(0, 2), 16), parseInt(hex.slice(2, 4), 16), parseInt(hex.slice(4, 6), 16)]);
     }
-    const cvs = document.createElement('canvas');
-    cvs.width = cvs.height = 16;
-    const c2 = cvs.getContext('2d');
-    const img = c2.createImageData(16, 16);
-    const idx = new Uint16Array(256);
     const d = String(v.d);
+    const idx = new Uint16Array(256);
+    let ar = 0, ag = 0, ab = 0, an = 0;
     for (let i = 0; i < 256; i++) {
       const id = B64.indexOf(d[i * 2]) * 64 + B64.indexOf(d[i * 2 + 1]);
       idx[i] = id;
       const col = rgb[id];
-      if (col) { img.data[i * 4] = col[0]; img.data[i * 4 + 1] = col[1]; img.data[i * 4 + 2] = col[2]; img.data[i * 4 + 3] = 255; }
+      if (col) { ar += col[0]; ag += col[1]; ab += col[2]; an++; }
     }
-    c2.putImageData(img, 0, 0);
-    (blockCache[w] || (blockCache[w] = new Map())).set(key, { cx, cz, canvas: cvs, pal, idx });
+    const avg = an ? `rgb(${Math.round(ar / an)},${Math.round(ag / an)},${Math.round(ab / an)})` : 'transparent';
+    let map = blockCache[w]; if (!map) map = blockCache[w] = new Map();
+    if (!map.has(key)) {
+      loadedCount++; $('loadN').textContent = loadedCount; $('loading').style.display = 'block';
+      lastBlockLoad = Date.now();
+      clearTimeout(loadTimer); loadTimer = setTimeout(() => { if (!tilePending) $('loading').style.display = 'none'; }, 1600);
+    }
+    map.set(key, { cx, cz, canvas: null, rgb, pal, idx, avg });
     markDirty();
   }
 
   // ---------------------------------------------------------------- başlat
   resize();
-  $('followRow').style.display = 'flex';
+  applyHash();
   requestAnimationFrame(frame);
   updateStatus();
 })();
